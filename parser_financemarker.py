@@ -1,6 +1,9 @@
 import requests
 import json
 import time
+import bot
+
+DELAY = 180  # Задержка в секундах
 
 HEADERS_TRANSACTION_P = {
     'Accept': 'application/json, text/plain, */*',
@@ -10,9 +13,24 @@ HEADERS_TRANSACTION_P = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:85.0) Gecko/20100101 Firefox/85.0',
     'Host': 'financemarker.ru',
     'Referer': 'https://financemarker.ru/insiders/?transaction_type=P',
+    'Authorization': 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE2MTMxNTU2ODksIm5iZiI6MTYxMzE1NTY4OSwianRpIjoiZTY0ZGVlZjYtZjg3Ni00ZTJmLTg3ODQtZjFjODdmZDZlNTJhIiwiZXhwIjoxNjEzNzYwNDg5LCJpZGVudGl0eSI6MzE5ODksImZyZXNoIjp0cnVlLCJ0eXBlIjoiYWNjZXNzIiwidXNlcl9jbGFpbXMiOnsiYWNjZXNzX2xldmVsIjo2fSwiY3NyZiI6IjM2ZDEyNDI4LThkNWEtNDAxNy1hYjdlLWE3NjA0OWNmNzFhZiJ9.2afDb9kK-AKaXArIv9jh1dj_AfoHYvCLfbBVVeJRMbw',
     'TE': 'Trailers',
     'UI-Language': 'ru'
 }
+
+MESSAGE = """«{}»
+
+Биржа: {}
+Компания: {}
+Название: {}
+Инсайдер: {}
+Сделка: {}
+Кол-во: {}
+Цена: {} ₽
+Сумма: {} ₽
+Дата: {}
+
+"""
 
 
 def get_response(url, headers=None):
@@ -44,6 +62,7 @@ def parse_insiders_from_json(json_data, transaction_type_filter, month_filter):
         amount = insider['amount']
         price = insider['price']
         value = insider['value']
+        exchange = insider['exchange']
         transaction_type = insider['transaction_type']
         if transaction_type == transaction_type_filter and transaction_date.split('.')[1] == month_filter:
             total_insiders.append(
@@ -53,6 +72,8 @@ def parse_insiders_from_json(json_data, transaction_type_filter, month_filter):
                  'owner': owner,
                  'amount': amount,
                  'price': price,
+                 'transaction_type': transaction_type,
+                 'exchange': exchange,
                  'value': value}
             )
     return total_insiders
@@ -76,6 +97,31 @@ def save_page(response: str, file_name='page.html'):
         html_file.write(response)
 
 
+def get_message(insiders: list):
+    """Подготовка сообщений для телеграмм бота"""
+    messages = []
+    for insider in insiders:
+        transaction_name = ''
+        if insider['transaction_type'] == 'P':
+            transaction_name = "Покупка"
+        elif insider['transaction_type'] == 'S':
+            transaction_name = "Продажа"
+        elif insider['transaction_type'] == 'M':
+            transaction_name = "Опцион"
+        message = MESSAGE.format(transaction_name,
+                                 insider['exchange'],
+                                 insider['code'],
+                                 insider['name'],
+                                 insider['owner'],
+                                 transaction_name,
+                                 insider['amount'],
+                                 insider['price'],
+                                 insider['value'],
+                                 insider['transaction_date'])
+        messages.append(message)
+    return messages
+
+
 def parser():
     """
     Парсер данных
@@ -87,8 +133,14 @@ def parser():
     insiders_p = parse_insiders_from_json(json_data, transaction_type_filter='P', month_filter=month_now)
     insiders_s = parse_insiders_from_json(json_data, transaction_type_filter='S', month_filter=month_now)
     insiders_m = parse_insiders_from_json(json_data, transaction_type_filter='M', month_filter=month_now)
-    print(insiders_s)
+    messages = get_message(insiders_p) + get_message(insiders_s) + get_message(insiders_m)
+    for message in messages:
+        # bot.send_info_in_group(message)
+        print(message)
+        time.sleep(3)
 
 
 if __name__ == '__main__':
-    parser()
+    while True:
+        parser()
+        time.sleep(DELAY)
