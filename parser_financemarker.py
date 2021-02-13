@@ -22,6 +22,7 @@ HEADERS_TRANSACTION_P = {
 }
 
 selected_exchange = ['NASDAQ', 'MOEX', 'NYSE', 'XETRA']
+selected_transaction_type = ['P', 'S', 'M']
 
 
 class Insider:
@@ -127,7 +128,7 @@ def save_history(id):
             history_file.write(str(id) + "\n")
 
 
-def parse_insiders_from_json(json_data, transaction_type_filter, month_filter, year_filter):
+def parse_insiders_from_json(json_data,month_filter, year_filter):
     """
     Достаем из json данные по фильтрам
     """
@@ -136,7 +137,7 @@ def parse_insiders_from_json(json_data, transaction_type_filter, month_filter, y
         transaction_date = insider['transaction_date']
         transaction_date = change_date_format(transaction_date)
         transaction_type = insider['transaction_type']
-        if transaction_type == transaction_type_filter:
+        if transaction_type in selected_transaction_type:
             if _is_suitable_by_date(transaction_date, month_filter, year_filter):
                 if insider['exchange'] in selected_exchange:
                     total_insiders.append(Insider(id=insider['id'],
@@ -190,19 +191,10 @@ def parser():
     json_data = json.loads(json_data)
     month_now = time.strftime("%m")
     year_now = time.strftime("%Y")
-    insiders_p = parse_insiders_from_json(json_data, transaction_type_filter='P',
-                                          month_filter=month_now,
-                                          year_filter=year_now)
-    insiders_p.sort(key=lambda ins: int(ins.transaction_date.split('.')[0]))
-    insiders_s = parse_insiders_from_json(json_data, transaction_type_filter='S',
-                                          month_filter=month_now,
-                                          year_filter=year_now)
-    insiders_s.sort(key=lambda ins: int(ins.transaction_date.split('.')[0]))
-    insiders_m = parse_insiders_from_json(json_data, transaction_type_filter='M',
-                                          month_filter=month_now,
-                                          year_filter=year_now)
-    insiders_m.sort(key=lambda ins: int(ins.transaction_date.split('.')[0]))
-    insiders = insiders_p + insiders_s + insiders_m
+    insiders = parse_insiders_from_json(json_data,
+                                        month_filter=month_now,
+                                        year_filter=year_now)
+    insiders.sort(key=lambda ins: int(ins.transaction_date.split('.')[0]))
     for insider in insiders:
         if insider.id not in get_history():
             message = insider.get_message()
