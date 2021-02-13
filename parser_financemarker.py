@@ -2,8 +2,11 @@ import requests
 import json
 import time
 import bot
+import os
+import config
 
 DELAY = 180  # Задержка в секундах
+HISTORY_FILE_NAME = 'history.txt'
 
 HEADERS_TRANSACTION_P = {
     'Accept': 'application/json, text/plain, */*',
@@ -13,12 +16,18 @@ HEADERS_TRANSACTION_P = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:85.0) Gecko/20100101 Firefox/85.0',
     'Host': 'financemarker.ru',
     'Referer': 'https://financemarker.ru/insiders/?transaction_type=P',
-    'Authorization': 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE2MTMxNTU2ODksIm5iZiI6MTYxMzE1NTY4OSwianRpIjoiZTY0ZGVlZjYtZjg3Ni00ZTJmLTg3ODQtZjFjODdmZDZlNTJhIiwiZXhwIjoxNjEzNzYwNDg5LCJpZGVudGl0eSI6MzE5ODksImZyZXNoIjp0cnVlLCJ0eXBlIjoiYWNjZXNzIiwidXNlcl9jbGFpbXMiOnsiYWNjZXNzX2xldmVsIjo2fSwiY3NyZiI6IjM2ZDEyNDI4LThkNWEtNDAxNy1hYjdlLWE3NjA0OWNmNzFhZiJ9.2afDb9kK-AKaXArIv9jh1dj_AfoHYvCLfbBVVeJRMbw',
+    'Authorization': config.AUTHORIZATION,
     'TE': 'Trailers',
     'UI-Language': 'ru'
 }
 
-MESSAGE = """«{}»
+
+class Insider:
+    """
+    Класс для работы с данными
+    """
+    MESSAGE = """
+«{}»
 
 Биржа: {}
 Компания: {}
@@ -31,6 +40,41 @@ MESSAGE = """«{}»
 Дата: {}
 
 """
+
+    def __init__(self, id, exchange, transaction_type, code, transaction_date, name, owner, amount, price,
+                 value):
+        self.id = str(id)
+        self.exchange = exchange
+        self.transaction_type = transaction_type
+        self.code = code
+        self.transaction_date = transaction_date
+        self.name = name
+        self.owner = owner
+        self.amount = int(amount)
+        self.price = float(price)
+        self.value = float(value)
+        self.transaction_name = None
+
+    def get_message(self):
+        """
+        Подготовка сообщения для телеграм
+        """
+        if self.transaction_type == 'P':
+            self.transaction_name = "Покупка"
+        elif self.transaction_type == 'S':
+            self.transaction_name = "Продажа"
+        elif self.transaction_type == 'M':
+            self.transaction_name = "Опцион"
+        return self.MESSAGE.format(self.transaction_name,
+                                   self.exchange,
+                                   self.code,
+                                   self.name,
+                                   self.owner,
+                                   self.transaction_name,
+                                   self.amount,
+                                   self.price,
+                                   self.value,
+                                   self.transaction_date)
 
 
 def get_response(url, headers=None):
@@ -48,35 +92,61 @@ def get_response(url, headers=None):
     return response
 
 
-def parse_insiders_from_json(json_data, transaction_type_filter, month_filter):
+def get_history():
+    """
+    Получаем лист с использованными id insider
+    """
+    if not os.path.isfile(HISTORY_FILE_NAME):
+        return []
+    else:
+        with open(HISTORY_FILE_NAME, 'r') as history_file:
+            return history_file.read().split('\n')
+
+
+def save_history(id):
+    """
+    Сохранение id в истории
+    """
+    if not os.path.isfile(HISTORY_FILE_NAME):
+        with open(HISTORY_FILE_NAME, 'w') as history_file:
+            history_file.write(str(id) + "\n")
+    else:
+        with open(HISTORY_FILE_NAME, 'a') as history_file:
+            history_file.write(str(id) + "\n")
+
+
+def parse_insiders_from_json(json_data, transaction_type_filter, month_filter, year_filter):
     """
     Достаем из json данные по фльтрам
     """
     total_insiders = []
     for insider in json_data['data']:
-        code = insider['code']
         transaction_date = insider['transaction_date']
         transaction_date = change_date_format(transaction_date)
-        name = insider['name']
-        owner = insider['owner']
-        amount = insider['amount']
-        price = insider['price']
-        value = insider['value']
-        exchange = insider['exchange']
         transaction_type = insider['transaction_type']
-        if transaction_type == transaction_type_filter and transaction_date.split('.')[1] == month_filter:
-            total_insiders.append(
-                {'code': code,
-                 'transaction_date': transaction_date,
-                 'name': name,
-                 'owner': owner,
-                 'amount': amount,
-                 'price': price,
-                 'transaction_type': transaction_type,
-                 'exchange': exchange,
-                 'value': value}
-            )
+        if transaction_type == transaction_type_filter:
+            if _is_suitable_by_date(transaction_date, month_filter, year_filter):
+                total_insiders.append(Insider(id=insider['id'],
+                                              code=insider['code'],
+                                              transaction_date=transaction_date,
+                                              name=insider['name'],
+                                              owner=insider['owner'],
+                                              amount=insider['amount'],
+                                              price=insider['price'],
+                                              transaction_type=transaction_type,
+                                              exchange=insider['exchange'],
+                                              value=insider['value'])
+                                      )
     return total_insiders
+
+
+def _is_suitable_by_date(date, month_filter, year_filter):
+    """
+    Проверка данных по дате
+    """
+    if date.split('.')[1] == month_filter:
+        if date.split('.')[2] == year_filter:
+            return True
 
 
 def change_date_format(date: str):  # initial date format: yyyy-mm-dd
@@ -97,31 +167,6 @@ def save_page(response: str, file_name='page.html'):
         html_file.write(response)
 
 
-def get_message(insiders: list):
-    """Подготовка сообщений для телеграмм бота"""
-    messages = []
-    for insider in insiders:
-        transaction_name = ''
-        if insider['transaction_type'] == 'P':
-            transaction_name = "Покупка"
-        elif insider['transaction_type'] == 'S':
-            transaction_name = "Продажа"
-        elif insider['transaction_type'] == 'M':
-            transaction_name = "Опцион"
-        message = MESSAGE.format(transaction_name,
-                                 insider['exchange'],
-                                 insider['code'],
-                                 insider['name'],
-                                 insider['owner'],
-                                 transaction_name,
-                                 insider['amount'],
-                                 insider['price'],
-                                 insider['value'],
-                                 insider['transaction_date'])
-        messages.append(message)
-    return messages
-
-
 def parser():
     """
     Парсер данных
@@ -130,14 +175,23 @@ def parser():
     json_data = json.loads(response.text)
     json_data = json.loads(json_data)
     month_now = time.strftime("%m")
-    insiders_p = parse_insiders_from_json(json_data, transaction_type_filter='P', month_filter=month_now)
-    insiders_s = parse_insiders_from_json(json_data, transaction_type_filter='S', month_filter=month_now)
-    insiders_m = parse_insiders_from_json(json_data, transaction_type_filter='M', month_filter=month_now)
-    messages = get_message(insiders_p) + get_message(insiders_s) + get_message(insiders_m)
-    for message in messages:
-        # bot.send_info_in_group(message)
-        print(message)
-        time.sleep(3)
+    year_now = time.strftime("%Y")
+    insiders_p = parse_insiders_from_json(json_data, transaction_type_filter='P',
+                                          month_filter=month_now,
+                                          year_filter=year_now)
+    insiders_s = parse_insiders_from_json(json_data, transaction_type_filter='S',
+                                          month_filter=month_now,
+                                          year_filter=year_now)
+    insiders_m = parse_insiders_from_json(json_data, transaction_type_filter='M',
+                                          month_filter=month_now,
+                                          year_filter=year_now)
+    insiders = insiders_p + insiders_s + insiders_m
+    for insider in insiders:
+        if insider.id not in get_history():
+            message = insider.get_message()
+            bot.send_info_in_group(message)
+            save_history(insider.id)
+            time.sleep(3)
 
 
 if __name__ == '__main__':
