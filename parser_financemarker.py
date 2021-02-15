@@ -21,7 +21,7 @@ HEADERS_TRANSACTION_P = {
     'UI-Language': 'ru'
 }
 
-selected_exchange = ['NASDAQ', 'MOEX', 'NYSE', 'XETRA']
+selected_exchange = ['NASDAQ', 'MOEX', 'NYSE', 'XETRA', 'SPB']
 selected_transaction_type = ['P', 'S', 'M']
 
 
@@ -128,7 +128,7 @@ def save_history(id):
             history_file.write(str(id) + "\n")
 
 
-def parse_insiders_from_json(json_data,month_filter, year_filter):
+def parse_insiders_from_json(json_data, month_filter, year_filter):
     """
     Достаем из json данные по фильтрам
     """
@@ -139,19 +139,24 @@ def parse_insiders_from_json(json_data,month_filter, year_filter):
         transaction_type = insider['transaction_type']
         if transaction_type in selected_transaction_type:
             if _is_suitable_by_date(transaction_date, month_filter, year_filter):
+                insider_object = Insider(id=insider['id'],
+                                         code=insider['code'],
+                                         transaction_date=transaction_date,
+                                         name=insider['name'],
+                                         owner=insider['owner'],
+                                         amount=insider['amount'],
+                                         price=insider['price'],
+                                         transaction_type=transaction_type,
+                                         exchange=insider['exchange'],
+                                         value=insider['value'],
+                                         trades_curr=insider['trades_curr'])
+                if insider['spb']:
+                    insider_object.exchange += ' SPB'
                 if insider['exchange'] in selected_exchange:
-                    total_insiders.append(Insider(id=insider['id'],
-                                                  code=insider['code'],
-                                                  transaction_date=transaction_date,
-                                                  name=insider['name'],
-                                                  owner=insider['owner'],
-                                                  amount=insider['amount'],
-                                                  price=insider['price'],
-                                                  transaction_type=transaction_type,
-                                                  exchange=insider['exchange'],
-                                                  value=insider['value'],
-                                                  trades_curr=insider['trades_curr'])
-                                          )
+                    total_insiders.append(insider_object)
+                else:
+                    if 'SPB' in selected_exchange:
+                        total_insiders.append(insider_object)
     return total_insiders
 
 
@@ -198,7 +203,7 @@ def parser():
     for insider in insiders:
         if insider.id not in get_history():
             message = insider.get_message()
-            bot.send_info_in_group(message)
+            # bot.send_info_in_group(message)
             save_history(insider.id)
             time.sleep(3)
 
