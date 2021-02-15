@@ -21,7 +21,7 @@ HEADERS_TRANSACTION_P = {
     'UI-Language': 'ru'
 }
 
-selected_exchange = ['NASDAQ', 'MOEX', 'NYSE', 'XETRA', 'SPB']
+selected_exchange = ['SPB']
 selected_transaction_type = ['P', 'S', 'M']
 
 
@@ -155,7 +155,7 @@ def parse_insiders_from_json(json_data, month_filter, year_filter):
                 if insider['exchange'] in selected_exchange:
                     total_insiders.append(insider_object)
                 else:
-                    if 'SPB' in selected_exchange:
+                    if 'SPB' in selected_exchange and insider['spb']:
                         total_insiders.append(insider_object)
     return total_insiders
 
@@ -203,7 +203,7 @@ def parser():
     for insider in insiders:
         if insider.id not in get_history():
             message = insider.get_message()
-            # bot.send_info_in_group(message)
+            bot.send_info_in_group(message)
             save_history(insider.id)
             time.sleep(3)
 
