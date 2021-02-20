@@ -2,11 +2,14 @@ import requests
 import json
 import time
 import bot
+import sys
 import os
 import config
+import telegraph
 
 DELAY = 180  # Задержка в секундах
-HISTORY_FILE_NAME = 'history.txt'
+HISTORY_INSIDER_FILE_NAME = 'history_insider.txt'
+HISTORY_NEWS_FILE_NAME = 'history_news.txt'
 
 HEADERS_TRANSACTION_P = {
     'Accept': 'application/json, text/plain, */*',
@@ -21,7 +24,7 @@ HEADERS_TRANSACTION_P = {
     'UI-Language': 'ru'
 }
 
-selected_exchange = ['SPB']
+selected_exchange = ['SPB', 'MOEX', 'NASDAQ', 'NYSE']
 selected_transaction_type = ['P', 'S', 'M']
 
 
@@ -48,6 +51,7 @@ class Insider:
                  value, trades_curr):
         self.id = str(id)
         self.exchange = exchange
+        self.full_exchange = exchange
         self.transaction_type = transaction_type
         self.code = code
         self.transaction_date = transaction_date
@@ -59,7 +63,7 @@ class Insider:
         self.transaction_name = None
         self.trades_curr = trades_curr
 
-    def get_message(self):
+    def get_prepared_message(self):
         """
         Подготовка сообщения для телеграм
         """
@@ -77,7 +81,7 @@ class Insider:
         price = '{0:,}'.format(self.price).replace(',', ' ')
         value = '{0:,}'.format(self.value).replace(',', ' ')
         return self.MESSAGE.format(self.transaction_name,
-                                   self.exchange,
+                                   self.full_exchange,
                                    self.code,
                                    self.name,
                                    self.owner,
@@ -88,6 +92,27 @@ class Insider:
                                    value,
                                    curr_symbol,
                                    self.transaction_date)
+
+
+class NewsItem:
+    def __init__(self, id, title, text, link, pub_date):
+        self.id = str(id)
+        self.title = title
+        self.text = text
+        self.link = link
+        self.pub_date = pub_date
+
+    def __str__(self):
+        return f'{self.title}\n{self.text}\n{self.pub_date}\n{self.link}'
+
+    def get_prepared_news_item(self):
+        prepared_news = [{'tag': 'p', 'children': [self.title]},
+                         {'tag': 'p', 'children': [self.text]},
+                         {'tag': 'a', 'attrs': {'href': self.link}, 'children': ['Источник']},
+                         {'tag': 'br'},
+                         {'tag': 'p', 'children': [self.pub_date]},
+                         {'tag': 'hr'}]
+        return prepared_news
 
 
 def get_response(url, headers=None):
@@ -105,26 +130,26 @@ def get_response(url, headers=None):
     return response
 
 
-def get_history():
+def get_history(history_file_name):
     """
     Получаем лист с использованными id insider
     """
-    if not os.path.isfile(HISTORY_FILE_NAME):
+    if not os.path.isfile(history_file_name):
         return []
     else:
-        with open(HISTORY_FILE_NAME, 'r') as history_file:
+        with open(history_file_name, 'r') as history_file:
             return history_file.read().split('\n')
 
 
-def save_history(id):
+def save_history(history_file_name, id):
     """
     Сохранение id в истории
     """
-    if not os.path.isfile(HISTORY_FILE_NAME):
-        with open(HISTORY_FILE_NAME, 'w') as history_file:
+    if not os.path.isfile(history_file_name):
+        with open(history_file_name, 'w') as history_file:
             history_file.write(str(id) + "\n")
     else:
-        with open(HISTORY_FILE_NAME, 'a') as history_file:
+        with open(history_file_name, 'a') as history_file:
             history_file.write(str(id) + "\n")
 
 
@@ -151,7 +176,7 @@ def parse_insiders_from_json(json_data, month_filter, year_filter):
                                          value=insider['value'],
                                          trades_curr=insider['trades_curr'])
                 if insider['spb']:
-                    insider_object.exchange += ' SPB'
+                    insider_object.full_exchange += ' SPB'
                 if insider['exchange'] in selected_exchange:
                     total_insiders.append(insider_object)
                 else:
@@ -187,11 +212,14 @@ def save_page(response: str, file_name='page.html'):
         html_file.write(response)
 
 
-def parser():
+def get_insiders():
     """
-    Парсер данных
+    Парсинг инсайдеров
     """
     response = get_response('https://financemarker.ru/api/insiders?transaction_type=P', headers=HEADERS_TRANSACTION_P)
+    if response.status_code == 401:
+        print('[ERROR] Истёк токен пользователя')
+        sys.exit()
     json_data = json.loads(response.text)
     json_data = json.loads(json_data)
     month_now = time.strftime("%m")
@@ -199,12 +227,62 @@ def parser():
     insiders = parse_insiders_from_json(json_data,
                                         month_filter=month_now,
                                         year_filter=year_now)
+
+    return insiders
+
+
+def get_news_item(insider: Insider):
+    """
+    Парсинг новостей
+    """
+    headers = HEADERS_TRANSACTION_P
+    headers['Referer'] = 'https://financemarker.ru/stocks/{}/{}'.format(insider.code, insider.exchange)
+    url = 'https://financemarker.ru/api/news?query={}&type=&page=1'.format(insider.code)
+    response = get_response(url, headers=headers)
+    json_data = json.loads(response.text)
+    json_data = json.loads(json_data)
+    last_news_item = parse_last_news_item_from_json(json_data)
+    return last_news_item
+
+
+def parse_last_news_item_from_json(json_data):
+    """
+    Достаём последнюю новость из json
+    """
+    if not json_data['data']:
+        return
+    last_news_json = json_data['data'][0]
+    news_item = NewsItem(id=last_news_json['id'],
+                         title=last_news_json['title'],
+                         text=last_news_json['text'],
+                         link=last_news_json['link'],
+                         pub_date=last_news_json['pub_date'])
+    return news_item
+
+
+def parser():
+    """
+    Парсер данных
+    """
+    insiders = get_insiders()
     insiders.sort(key=lambda ins: int(ins.transaction_date.split('.')[0]))
+    new_news = True
     for insider in insiders:
-        if insider.id not in get_history():
-            message = insider.get_message()
-            bot.send_info_in_group(message)
-            save_history(insider.id)
+        if insider.id not in get_history(HISTORY_INSIDER_FILE_NAME):
+            message = insider.get_prepared_message()
+            news_item = get_news_item(insider)
+            print(message)
+            print(news_item)
+            # bot.send_info_in_group(message)
+            if news_item:
+                if news_item.id not in get_history(HISTORY_NEWS_FILE_NAME):
+                    if new_news:
+                        telegraph.init_news_item(news_item.get_prepared_news_item())
+                        new_news = False
+                    else:
+                        telegraph.add_news_item(news_item.get_prepared_news_item())
+                    save_history(HISTORY_NEWS_FILE_NAME, news_item.id)
+            save_history(HISTORY_INSIDER_FILE_NAME, insider.id)
             time.sleep(3)
 
 
