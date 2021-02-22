@@ -108,7 +108,8 @@ class NewsItem:
     def get_prepared_news_item(self):
         prepared_news = [{'tag': 'p', 'children': [self.title]},
                          {'tag': 'p', 'children': [self.text]},
-                         {'tag': 'a', 'attrs': {'href': config.TELEGRAM_CHAT}, 'children': ['INVEST INSIDER']},
+                         {'tag': 'a', 'attrs': {'href': config.TELEGRAM_CHAT}, 'children': ['INVEST INSIDER', '']},
+                         {'tag': 'br'},
                          {'tag': 'a', 'attrs': {'href': self.link}, 'children': ['Источник']},
                          {'tag': 'br'},
                          {'tag': 'p', 'children': [self.pub_date]},
