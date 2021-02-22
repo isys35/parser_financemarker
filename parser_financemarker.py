@@ -108,6 +108,7 @@ class NewsItem:
     def get_prepared_news_item(self):
         prepared_news = [{'tag': 'p', 'children': [self.title]},
                          {'tag': 'p', 'children': [self.text]},
+                         {'tag': 'a', 'attrs': {'href': config.TELEGRAM_CHAT}, 'children': ['INVEST INSIDER']},
                          {'tag': 'a', 'attrs': {'href': self.link}, 'children': ['Источник']},
                          {'tag': 'br'},
                          {'tag': 'p', 'children': [self.pub_date]},
@@ -252,11 +253,14 @@ def parse_last_news_item_from_json(json_data):
     if not json_data['data']:
         return
     last_news_json = json_data['data'][0]
+    news_date, news_time = last_news_json['pub_date'].split(' ')
+    news_date = change_date_format(news_date)
+    date = '{} {}'.format(news_date, news_time)
     news_item = NewsItem(id=last_news_json['id'],
                          title=last_news_json['title'],
                          text=last_news_json['text'],
                          link=last_news_json['link'],
-                         pub_date=last_news_json['pub_date'])
+                         pub_date=date)
     return news_item
 
 
@@ -266,22 +270,21 @@ def parser():
     """
     insiders = get_insiders()
     insiders.sort(key=lambda ins: int(ins.transaction_date.split('.')[0]))
-    new_news = True
     for insider in insiders:
         if insider.id not in get_history(HISTORY_INSIDER_FILE_NAME):
             message = insider.get_prepared_message()
             news_item = get_news_item(insider)
-            print(message)
-            print(news_item)
-            # bot.send_info_in_group(message)
             if news_item:
+                print(news_item)
                 if news_item.id not in get_history(HISTORY_NEWS_FILE_NAME):
-                    if new_news:
-                        telegraph.init_news_item(news_item.get_prepared_news_item())
-                        new_news = False
-                    else:
-                        telegraph.add_news_item(news_item.get_prepared_news_item())
+                    news_content = news_item.get_prepared_news_item()
+                    telegraph.update_news(news_content, insider.code)
                     save_history(HISTORY_NEWS_FILE_NAME, news_item.id)
+            if news_item:
+                json_path_insider = telegraph.get_json_path_insider(insider.code)
+                message += '<a href="{}">Новости</a>'.format(telegraph.Page(json_path_insider, insider.code).url)
+            print(message)
+            bot.send_info_in_group(message)
             save_history(HISTORY_INSIDER_FILE_NAME, insider.id)
             time.sleep(3)
 

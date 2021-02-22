@@ -5,14 +5,22 @@ import sys
 
 TELEGRAPH_ACCOUNT_FILE = 'telegraph_account.json'
 TELEGRAPH_PAGE_FILE = 'telegraph_page.json'
+TELEGRAPH_PAGES_DIR = 'telgraph_pages'
 
 
 class Account:
+    """
+    telegra.ph аккаунт
+    """
+
     def __init__(self, json_file):
         self.json_file = json_file
+        self._check_json()
+        self._init_data()
+
+    def _check_json(self):
         if not os.path.isfile(self.json_file):
             self.create_json()
-        self._init_data()
 
     def get_data(self):
         with open(self.json_file, 'r') as json_file:
@@ -44,7 +52,13 @@ class Account:
 
 
 class Page(Account):
-    def __init__(self, json_file):
+    """
+    telegra.ph страница
+    """
+
+    def __init__(self, json_file, insider_code):
+        # TODO Можно сделать, чтобы задавть только insider_code или сделать комбинирование
+        self.insider_code = insider_code
         super(Page, self).__init__(json_file)
 
     def _init_data(self):
@@ -58,8 +72,12 @@ class Page(Account):
         if 'can_edit' in data['result']:
             self.can_edit = data['result']['can_edit']
 
+    def _check_json(self):
+        if not os.path.isfile(self.json_file):
+            self.create_json()
+
     def create_json(self):
-        title = input('Введите заголовок: ')
+        title = self.insider_code
         self.create_page(title)
 
     def create_page(self, title):
@@ -105,14 +123,26 @@ def update_page_json(path):
             print('[ERROR] {}'.format(response.json()['error']))
 
 
-def init_news_item(content: list):
-    account = Account(TELEGRAPH_ACCOUNT_FILE)
-    page = Page(TELEGRAPH_PAGE_FILE)
-    edit_page(account.access_token, page.path, page.title, content)
+def get_json_path_insider(insider_code):
+    page_json_file = '{}.json'.format(insider_code)
+    path_page_json_file = os.path.join(TELEGRAPH_PAGES_DIR, page_json_file)
+    return path_page_json_file
 
 
-def add_news_item(content: list):
+def update_news(news_content, insider_code):
     account = Account(TELEGRAPH_ACCOUNT_FILE)
-    page = Page(TELEGRAPH_PAGE_FILE)
-    content = page.content + content
-    edit_page(account.access_token, page.path, page.title, content)
+    json_path_insider = get_json_path_insider(insider_code)
+    page = Page(json_path_insider, insider_code)
+    edit_page(account.access_token, page.path, page.title, news_content)
+
+# def init_news_item(content: list):
+#     account = Account(TELEGRAPH_ACCOUNT_FILE)
+#     page = Page(TELEGRAPH_PAGE_FILE)
+#     edit_page(account.access_token, page.path, page.title, content)
+#
+#
+# def add_news_item(content: list):
+#     account = Account(TELEGRAPH_ACCOUNT_FILE)
+#     page = Page(TELEGRAPH_PAGE_FILE)
+#     content = page.content + content
+#     edit_page(account.access_token, page.path, page.title, content)
