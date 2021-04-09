@@ -135,14 +135,3 @@ def update_news(news_content, insider_code):
     page = Page(json_path_insider, insider_code)
     edit_page(account.access_token, page.path, page.title, news_content)
 
-# def init_news_item(content: list):
-#     account = Account(TELEGRAPH_ACCOUNT_FILE)
-#     page = Page(TELEGRAPH_PAGE_FILE)
-#     edit_page(account.access_token, page.path, page.title, content)
-#
-#
-# def add_news_item(content: list):
-#     account = Account(TELEGRAPH_ACCOUNT_FILE)
-#     page = Page(TELEGRAPH_PAGE_FILE)
-#     content = page.content + content
-#     edit_page(account.access_token, page.path, page.title, content)
