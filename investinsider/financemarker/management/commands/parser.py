@@ -86,4 +86,8 @@ class Command(BaseCommand):
     help = 'Parser'
 
     def handle(self, *args, **kwargs):
-        update_insiders()
+        while True:
+            update_insiders()
+
+            time.sleep(180)
+
