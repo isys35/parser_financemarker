@@ -135,3 +135,6 @@ def update_news(news_content, insider_code):
     page = Page(json_path_insider, insider_code)
     edit_page(account.access_token, page.path, page.title, news_content)
 
+
+if __name__ == '__main__':
+    Account(TELEGRAPH_ACCOUNT_FILE)

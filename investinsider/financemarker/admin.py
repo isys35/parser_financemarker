@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Insider
+from .models import Insider, NewsItem
 
 
 class InsiderAdmin(admin.ModelAdmin):
@@ -9,3 +9,4 @@ class InsiderAdmin(admin.ModelAdmin):
 
 
 admin.site.register(Insider, InsiderAdmin)
+admin.site.register(NewsItem)

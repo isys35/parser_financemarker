@@ -124,3 +124,8 @@ STATIC_URL = '/static/'
 # https://docs.djangoproject.com/en/3.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+TELEGRAM_CHAT = 'https://t.me/joinchat/U4jLBkRLDi7yf6Lj'
+
+TELEGRAPH_SHORT_NAME = 'test_short_name'
+TELEGRAPH_AUTHOR_NAME = 'test_author_name'
