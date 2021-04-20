@@ -40,15 +40,16 @@ class NewsItem(models.Model):
     publicated = models.DateTimeField(verbose_name='Время и дата публикации')
     insider = models.ForeignKey('Insider', null=False, on_delete=models.PROTECT, verbose_name='Инсайдер')
 
-    def get_telegraph_content(self):
-        return [{'tag': 'p', 'children': [self.title]},
-                {'tag': 'p', 'children': [self.content]},
-                {'tag': 'a', 'attrs': {'href': settings.TELEGRAM_CHAT}, 'children': ['INVEST INSIDER', '']},
-                {'tag': 'br'},
-                {'tag': 'a', 'attrs': {'href': self.link}, 'children': ['Источник']},
-                {'tag': 'br'},
-                {'tag': 'p', 'children': [self.publicated]},
-                {'tag': 'hr'}]
+
+    # def get_telegraph_content(self):
+    #     return [{'tag': 'p', 'children': [self.title]},
+    #             {'tag': 'p', 'children': [self.content]},
+    #             {'tag': 'a', 'attrs': {'href': settings.TELEGRAM_CHAT}, 'children': ['INVEST INSIDER', '']},
+    #             {'tag': 'br'},
+    #             {'tag': 'a', 'attrs': {'href': self.link}, 'children': ['Источник']},
+    #             {'tag': 'br'},
+    #             {'tag': 'p', 'children': [self.publicated]},
+    #             {'tag': 'hr'}]
 
     def __str__(self):
         return self.title
@@ -64,3 +65,14 @@ class TelegraphAccount(models.Model):
     author_url = models.CharField(null=True, max_length=40, verbose_name='Ссылка на автора')
     access_token = models.CharField(null=False, max_length=60, verbose_name='Токен аккаунта')
     auth_url = models.CharField(null=True, max_length=60, verbose_name='Url авторизации')
+
+
+class TelegraphPage(models.Model):
+    path = models.CharField(null=False, max_length=40, verbose_name='Путь')
+    url = models.URLField(null=False, verbose_name='Ссылка')
+    title = models.CharField(null=False, max_length=40, verbose_name='Заголовок')
+    description = models.TextField(null=True, verbose_name='Описание')
+    content = models.TextField(null=False, verbose_name='Контент')
+    account = models.ForeignKey('TelegraphAccount', null=False, on_delete=models.PROTECT, verbose_name='Аккаунт')
+    insider = models.ForeignKey('Insider', null=False, on_delete=models.PROTECT, verbose_name='Инсайдер')
+    news_item = models.ForeignKey('NewsItem', null=False, on_delete=models.PROTECT, verbose_name='Новость')

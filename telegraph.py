@@ -137,4 +137,4 @@ def update_news(news_content, insider_code):
 
 
 if __name__ == '__main__':
-    Account(TELEGRAPH_ACCOUNT_FILE)
+    update_news('fsdfdsfds', '3213213')
