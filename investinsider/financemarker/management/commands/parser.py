@@ -4,10 +4,12 @@ import time
 import requests
 from django.core.management.base import BaseCommand
 from datetime import datetime
-from financemarker.models import Insider, NewsItem, TelegraphAccount
+from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage
 from django.db.models import Q
-from django.conf import settings
+
 from abc import abstractmethod
+
+from . import telegraph
 
 AUTHORIZATION = 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE2MTc5Njc1MjQsIm5iZiI6MTYxNzk2NzUyNCwianRpIjoiM2UyZWQwN2EtMDY1Mi00ODVjLWI4ZGItNGQ4MDhhMTA4ZmI4IiwiZXhwIjoxNjE4NTcyMzI0LCJpZGVudGl0eSI6MzYxNjcsImZyZXNoIjp0cnVlLCJ0eXBlIjoiYWNjZXNzIiwidXNlcl9jbGFpbXMiOnsiYWNjZXNzX2xldmVsIjo2LCJkYXRhX2xldmVsIjo2fSwiY3NyZiI6ImUxZGM5YmMwLTY4MjYtNDg3Ny1iY2M1LTMyYTI4NjRjOGRjNyJ9.MtaSpZMqLIVyDkibuzxYuOtwvP_tPDzTEnU-s-DdtQ4'
 
@@ -88,9 +90,9 @@ class JSONParserLastNewsItem(JSONParser):
             return
         last_news_json = self.json_dict['data'][0]
         publicated = datetime.strptime(last_news_json['pub_date'], "%Y-%m-%d %M:%H:%S")
-        news_item = NewsItem.objects.create(fm_id=last_news_json['id'], title=last_news_json['title'],
-                                            content=last_news_json['text'], link=last_news_json['link'],
-                                            publicated=publicated)
+        news_item = NewsItem(fm_id=last_news_json['id'], title=last_news_json['title'],
+                            content=last_news_json['text'], link=last_news_json['link'],
+                            publicated=publicated)
         return news_item
 
 
@@ -152,6 +154,19 @@ class UpdaterTelegraphPages(Updater):
         news_items = NewsItem.objects.filter(insider=insider)
         if news_items:
             news_item = news_items.earliest('-published')
+            telegraph_pages_with_news_item = TelegraphPage.objects.filter(news_item=news_item)
+            if telegraph_pages_with_news_item:
+                return
+            else:
+                telegraph_pages_with_insider = TelegraphPage.objects.filter(insider=insider)
+                if telegraph_pages_with_insider:
+                    telegraph_page = telegraph_pages_with_insider[0]
+                    # content = telegraph.Formater().telegraph_format(news_item)
+                    # telegraph.TelegraphManager().edit_page(telegraph_page, content)
+                else:
+                    telegraph_page = telegraph.TelegraphManager().create_page(str(insider.code))
+
+
 
 
 # def create_tph_account():
