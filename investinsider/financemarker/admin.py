@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Insider, NewsItem
+from .models import Insider, NewsItem, TelegraphAccount, TelegraphPage
 
 
 class InsiderAdmin(admin.ModelAdmin):
@@ -10,3 +10,5 @@ class InsiderAdmin(admin.ModelAdmin):
 
 admin.site.register(Insider, InsiderAdmin)
 admin.site.register(NewsItem)
+admin.site.register(TelegraphAccount)
+admin.site.register(TelegraphPage)

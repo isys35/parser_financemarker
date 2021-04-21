@@ -11,7 +11,7 @@ from abc import abstractmethod
 
 from . import telegraph
 
-AUTHORIZATION = 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE2MTc5Njc1MjQsIm5iZiI6MTYxNzk2NzUyNCwianRpIjoiM2UyZWQwN2EtMDY1Mi00ODVjLWI4ZGItNGQ4MDhhMTA4ZmI4IiwiZXhwIjoxNjE4NTcyMzI0LCJpZGVudGl0eSI6MzYxNjcsImZyZXNoIjp0cnVlLCJ0eXBlIjoiYWNjZXNzIiwidXNlcl9jbGFpbXMiOnsiYWNjZXNzX2xldmVsIjo2LCJkYXRhX2xldmVsIjo2fSwiY3NyZiI6ImUxZGM5YmMwLTY4MjYtNDg3Ny1iY2M1LTMyYTI4NjRjOGRjNyJ9.MtaSpZMqLIVyDkibuzxYuOtwvP_tPDzTEnU-s-DdtQ4'
+AUTHORIZATION = 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE2MTg5ODk1MjMsIm5iZiI6MTYxODk4OTUyMywianRpIjoiMWEzY2U4MjEtMTVlNC00MzYwLWE5NTEtYWE1MDg1Nzk5ODIyIiwiZXhwIjoxNjE5NTk0MzIzLCJpZGVudGl0eSI6Mzc1MjgsImZyZXNoIjp0cnVlLCJ0eXBlIjoiYWNjZXNzIiwidXNlcl9jbGFpbXMiOnsiYWNjZXNzX2xldmVsIjo2LCJkYXRhX2xldmVsIjo2fSwiY3NyZiI6IjM3NWM1MGEwLTg2NzctNGJiNC1hYTUxLTBlM2I3NzNhZDE5NSJ9.VyuxlqfLsUNfKJb4V9VXfKtL2XnQlgslV49tgUGErus'
 
 INSIDERS_URL = 'https://financemarker.ru/api/insiders?transaction_type=P'
 REFERER_URL = 'https://financemarker.ru/stocks/{}/{}'  # {insider.exchange} {insider.code}
@@ -89,10 +89,10 @@ class JSONParserLastNewsItem(JSONParser):
         if not self.json_dict['data']:
             return
         last_news_json = self.json_dict['data'][0]
-        publicated = datetime.strptime(last_news_json['pub_date'], "%Y-%m-%d %M:%H:%S")
+        publicated = datetime.strptime(last_news_json['pub_date'], "%Y-%m-%d %H:%M:%S")
         news_item = NewsItem(fm_id=last_news_json['id'], title=last_news_json['title'],
-                            content=last_news_json['text'], link=last_news_json['link'],
-                            publicated=publicated)
+                             content=last_news_json['text'], link=last_news_json['link'],
+                             publicated=publicated)
         return news_item
 
 
@@ -140,6 +140,8 @@ class UpdaterLastNewsItems(Updater):
         url = NEWS_URL.format(insider.exchange, insider.code)
         response = financemaker_requests.get(url)
         last_news_item = JSONParserLastNewsItem(response.text).get()
+        if not last_news_item:
+            return
         if not NewsItem.objects.filter(fm_id=last_news_item.fm_id):
             last_news_item.insider = insider
             last_news_item.save()
@@ -153,7 +155,7 @@ class UpdaterTelegraphPages(Updater):
     def update_telegraph_page(self, insider: Insider):
         news_items = NewsItem.objects.filter(insider=insider)
         if news_items:
-            news_item = news_items.earliest('-published')
+            news_item = news_items.earliest('-publicated')
             telegraph_pages_with_news_item = TelegraphPage.objects.filter(news_item=news_item)
             if telegraph_pages_with_news_item:
                 return
@@ -161,48 +163,20 @@ class UpdaterTelegraphPages(Updater):
                 telegraph_pages_with_insider = TelegraphPage.objects.filter(insider=insider)
                 if telegraph_pages_with_insider:
                     telegraph_page = telegraph_pages_with_insider[0]
-                    # content = telegraph.Formater().telegraph_format(news_item)
-                    # telegraph.TelegraphManager().edit_page(telegraph_page, content)
                 else:
-                    telegraph_page = telegraph.TelegraphManager().create_page(str(insider.code))
-
-
-
-
-# def create_tph_account():
-#     url = 'https://api.telegra.ph/createAccount?short_name={}&author_name={}'
-#     response = requests.get(url.format(settings.TELEGRAPH_SHORT_NAME, settings.TELEGRAPH_AUTHOR_NAME))
-#     if response.status_code == 200:
-#         if response.json()['ok']:
-#             result = response.json()['result']
-#             author_url = result['author_url']
-#             access_token = result['access_token']
-#             auth_url = result['auth_url']
-#             acount = TelegraphAccount.objects.create(short_name=settings.TELEGRAPH_SHORT_NAME,
-#                                                      author_name=settings.TELEGRAPH_AUTHOR_NAME,
-#                                                      author_url=author_url,
-#                                                      access_token=access_token,
-#                                                      auth_url=auth_url)
-#             return acount
-#         else:
-#             print('[ERROR] {}'.format(response.json()['error']))
-#             sys.exit()
-
-
-# def get_tph_account():
-#     account_filter = TelegraphAccount.objects.filter(short_name=settings.TELEGRAPH_SHORT_NAME)
-#     if account_filter:
-#         return account_filter[0]
-#     else:
-#         return create_tph_account()
+                    telegraph_page = telegraph.TelegraphManager().create_page(insider)
+                telegraph.TelegraphManager().edit_page(telegraph_page, news_item)
 
 
 def parser():
+    print('[INFO] Update insiders...')
     UpdaterInsiders().update()
     q_filter = Q(tg_messaged=False) & Q(transaction_date__month=datetime.now().month) & Q(
         transaction_date__year=datetime.now().year)
     filtered_insiders = Insider.objects.filter(q_filter)
+    print('[INFO] Update last news...')
     UpdaterLastNewsItems().update(filtered_insiders)
+    print('[INFO] Update telegraph...')
     UpdaterTelegraphPages().update(filtered_insiders)
 
 
