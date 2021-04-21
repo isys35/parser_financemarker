@@ -129,3 +129,5 @@ TELEGRAM_CHAT = 'https://t.me/joinchat/U4jLBkRLDi7yf6Lj'
 
 TELEGRAPH_SHORT_NAME = 'test_short_name'
 TELEGRAPH_AUTHOR_NAME = 'test_author_name'
+TELEGRAM_BOT_TOKEN = ''
+TELEGRAM_GROUP_ID = ''
