@@ -1,0 +1,11 @@
+Биржа: #{{ insider.full_exchange }}
+Тикер: #{{ insider.code }}
+Компания: {% if telegraph_page %}<a href="{{ telegraph_page.url }}">{{ insider.owner }}</a>{% else %}{{ insider.owner }}{% endif %}
+Сделка: {% if insider.transaction_type == 'P' %} ⬆ Покупка {% elif insider.transaction_type == 'S' %} ⬇️Продажа {% elif insider.transaction_type == 'M' %}  ↕️Опцион {% endif %}
+Кол-во: {{ amount }}
+Цена: {{ price }} {% if insider.trades_curr == 'RUB'%}₽{% elif insider.trades_curr == 'USD' %}${% endif %}
+Сумма: {{ value }} {% if insider.trades_curr == 'RUB'%}₽{% elif insider.trades_curr == 'USD' %}${% endif %}
+Дата: {{ insider.transaction_date|date:"d.m.Y" }}
+{% if telegraph_page %}
+<a href="{{ telegraph_page.url }}">Новости</a>
+{% endif %}

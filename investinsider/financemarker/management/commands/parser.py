@@ -9,7 +9,7 @@ from django.db.models import Q
 
 from abc import abstractmethod
 
-from . import telegraph
+from . import telegraph, telegram_bot
 
 AUTHORIZATION = 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE2MTg5ODk1MjMsIm5iZiI6MTYxODk4OTUyMywianRpIjoiMWEzY2U4MjEtMTVlNC00MzYwLWE5NTEtYWE1MDg1Nzk5ODIyIiwiZXhwIjoxNjE5NTk0MzIzLCJpZGVudGl0eSI6Mzc1MjgsImZyZXNoIjp0cnVlLCJ0eXBlIjoiYWNjZXNzIiwidXNlcl9jbGFpbXMiOnsiYWNjZXNzX2xldmVsIjo2LCJkYXRhX2xldmVsIjo2fSwiY3NyZiI6IjM3NWM1MGEwLTg2NzctNGJiNC1hYTUxLTBlM2I3NzNhZDE5NSJ9.VyuxlqfLsUNfKJb4V9VXfKtL2XnQlgslV49tgUGErus'
 
@@ -171,16 +171,34 @@ class UpdaterTelegraphPages(Updater):
             telegraph.TelegraphManager().edit_page(telegraph_page, news_item)
 
 
+class InsidersMessager:
+    DELAY = 3
+
+    def send_messages(self, insiders: list):
+        for insider in insiders:
+            telegraph_pages = TelegraphPage.objects.filter(insider=insider)
+            if telegraph_pages:
+                telegraph_page = telegraph_pages[0]
+            else:
+                telegraph_page = None
+            message = telegram_bot.Formater().telegram_format(insider, telegraph_page)
+            telegram_bot.BotManager().send_text_message(message)
+            time.sleep(self.DELAY)
+
+
 def parser():
     print('[INFO] Update insiders...')
-    UpdaterInsiders().update()
+    # UpdaterInsiders().update()
     q_filter = Q(tg_messaged=False) & Q(transaction_date__month=datetime.now().month) & Q(
         transaction_date__year=datetime.now().year)
     filtered_insiders = Insider.objects.filter(q_filter)
     print('[INFO] Update last news...')
-    UpdaterLastNewsItems().update(filtered_insiders)
+    # UpdaterLastNewsItems().update(filtered_insiders)
     print('[INFO] Update telegraph...')
-    UpdaterTelegraphPages().update(filtered_insiders)
+    # UpdaterTelegraphPages().update(filtered_insiders)
+    InsidersMessager().send_messages(filtered_insiders)
+    # message = render_to_string('telegram_message/message.html')
+    # telegram_bot.send_message(message)
 
 
 class Command(BaseCommand):

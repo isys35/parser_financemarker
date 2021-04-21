@@ -73,3 +73,9 @@ class TelegraphPage(models.Model):
     class Meta:
         verbose_name_plural = 'Страницы Telegraph'
         verbose_name = 'Страницa Telegraph'
+
+
+class TelegramUser(models.Model):
+    tg_id = models.CharField(null=False,unique=True,  max_length=40, verbose_name='id telegram')
+
+
