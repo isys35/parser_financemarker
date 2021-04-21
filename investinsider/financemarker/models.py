@@ -32,6 +32,12 @@ class Insider(models.Model):
         verbose_name = 'Инсайдер'
 
 
+class Company(models.Model):
+    code = models.CharField(null=False,unique=True, max_length=10, verbose_name='Тикер компании')
+    name = models.CharField(null=False, max_length=20, verbose_name='Название компании')
+    image = models.ImageField()
+
+
 class NewsItem(models.Model):
     fm_id = models.CharField(max_length=30, verbose_name='financemarker ID', unique=True)
     title = models.CharField(null=True, max_length=20, verbose_name='Заголовок')
@@ -76,6 +82,4 @@ class TelegraphPage(models.Model):
 
 
 class TelegramUser(models.Model):
-    tg_id = models.CharField(null=False,unique=True,  max_length=40, verbose_name='id telegram')
-
-
+    tg_id = models.CharField(null=False, unique=True, max_length=40, verbose_name='id telegram')
