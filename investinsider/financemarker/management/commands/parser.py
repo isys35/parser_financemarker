@@ -152,20 +152,23 @@ class UpdaterTelegraphPages(Updater):
         for insider in insiders:
             self.update_telegraph_page(insider)
 
-    def update_telegraph_page(self, insider: Insider):
+    def check_last_news_item(self, insider: Insider):
         news_items = NewsItem.objects.filter(insider=insider)
         if news_items:
             news_item = news_items.earliest('-publicated')
             telegraph_pages_with_news_item = TelegraphPage.objects.filter(news_item=news_item)
-            if telegraph_pages_with_news_item:
-                return
+            if not telegraph_pages_with_news_item:
+                return True
+
+    def update_telegraph_page(self, insider: Insider):
+        if self.check_last_news_item(insider):
+            telegraph_pages_with_insider = TelegraphPage.objects.filter(insider=insider)
+            if telegraph_pages_with_insider:
+                telegraph_page = telegraph_pages_with_insider[0]
             else:
-                telegraph_pages_with_insider = TelegraphPage.objects.filter(insider=insider)
-                if telegraph_pages_with_insider:
-                    telegraph_page = telegraph_pages_with_insider[0]
-                else:
-                    telegraph_page = telegraph.TelegraphManager().create_page(insider)
-                telegraph.TelegraphManager().edit_page(telegraph_page, news_item)
+                telegraph_page = telegraph.TelegraphManager().create_page(insider)
+            news_item = NewsItem.objects.filter(insider=insider).earliest('-publicated')
+            telegraph.TelegraphManager().edit_page(telegraph_page, news_item)
 
 
 def parser():
