@@ -41,10 +41,6 @@ class Company(models.Model):
         verbose_name = 'Компания'
 
 
-class TestImage(models.Model):
-    image = models.ImageField(null=True, verbose_name='Изображение')
-
-
 class Exchange(models.Model):
     name = models.CharField(null=False, max_length=20, verbose_name='Название')
     full_name = models.CharField(unique=True, max_length=40, verbose_name='Полное название')

@@ -6,7 +6,9 @@ from django.core.management.base import BaseCommand
 from datetime import datetime
 from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage, Exchange, Company
 from django.db.models import Q
-
+from io import BytesIO
+from django.core.files.base import ContentFile
+from PIL import Image
 from abc import abstractmethod
 
 from . import telegraph, telegram_bot
@@ -18,6 +20,8 @@ REFERER_URL = 'https://financemarker.ru/stocks/{}/{}'  # {insider.exchange} {ins
 NEWS_URL = 'https://financemarker.ru/api/news?query={}:{}&type=&page=1'  # {insider.exchange} {insider.code}
 IMAGE_URL_1 = 'https://financemarker.ru/fa/fa_logos/{}.png'
 IMAGE_URL_2 = 'https://financemarker.ru/fa/fa_logos/{}_{}.png'
+IMAGE_URL_3 = 'https://financemarker.ru/fa/fa_logos/{}.jpg'
+IMAGE_URL_4 = 'https://financemarker.ru/fa/fa_logos/{}_{}.jpg'
 
 
 class FinanceMakerRequests:
@@ -44,12 +48,26 @@ class FinanceMakerRequests:
 
 class FinanceMakerImageParser:
     def get_image(self, company: Company):
-        response = requests.get(IMAGE_URL_1.format(company.code))
+        url = IMAGE_URL_1.format(company.code)
+        response = requests.get(url)
+        if response.status_code != 200:
+            url = IMAGE_URL_2.format(company.exchange.name, company.code)
+            response = requests.get(url)
+        if response.status_code != 200:
+            url = IMAGE_URL_3.format(company.code)
+            response = requests.get(url)
+        if response.status_code != 200:
+            url = IMAGE_URL_4.format(company.exchange.name, company.code)
+            response = requests.get(url)
         if response.status_code == 200:
-            return response.content
-        response = requests.get(IMAGE_URL_2.format(company.exchange.name, company.code))
-        if response.status_code == 200:
-            return response.content
+            image_name = url.split('/')[-1]
+            extension = 'png'
+            f = BytesIO(response.content)
+            out = BytesIO()
+            image = Image.open(f)
+            image.save(out, extension)
+            content = ContentFile(out.getvalue())
+            return content, image_name
 
 
 class DB:
@@ -59,14 +77,22 @@ class DB:
 
     @staticmethod
     def get_or_create_exchange(exchange_name: str, exchange_fullname: str):
-        return Exchange.objects.get_or_create(name=exchange_name, full_name=exchange_fullname)
+        return Exchange.objects.get_or_create(name=exchange_name, full_name=exchange_fullname)[0]
 
-    def get_or_create_company(self, company_name, company_code, exchange):
+    @staticmethod
+    def get_or_create_company(company_name, company_code, exchange):
         search_filter = Company.objects.filter(code=company_code)
         if search_filter:
             return search_filter[0]
         company = Company(name=company_name, code=company_code, exchange=exchange)
-        # company.image = FinanceMakerImageParser().get_image(company)
+        try:
+            image_content, image_name = FinanceMakerImageParser().get_image(company)
+        except TypeError:
+            company.save()
+            return company
+        company.image.save(image_name, image_content, save=False)
+        company.save()
+        return company
 
 
 class JSONParser:
@@ -95,13 +121,9 @@ class JSONParserInsiders(JSONParser):
                                     transaction_date=transaction_date,
                                     transaction_type=insider['transaction_type'],
                                     trades_curr=insider['trades_curr'],
-                                    # code=insider['code'],
                                     name=insider['name'],
-                                    # owner=insider['owner'],
                                     amount=int(insider['amount']),
                                     price=float(insider['price']),
-                                    # exchange=insider['exchange'],
-                                    # full_exchange=insider['exchange'],
                                     value=float(insider['value'])
                                     )
             exchnage_name = insider['exchange']
