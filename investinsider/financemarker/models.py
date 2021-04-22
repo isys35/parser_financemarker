@@ -13,12 +13,10 @@ class Insider(models.Model):
         ('USD', '$'),
     )
     fm_id = models.CharField(max_length=30, verbose_name='financemarker ID', unique=True)
-    exchange = models.CharField(null=True, max_length=20, verbose_name='Биржа')
-    full_exchange = models.CharField(null=True, max_length=40, verbose_name='Биржа полное название')
+    exchange = models.ForeignKey('Exchange', null=False, on_delete=models.PROTECT, verbose_name='Биржа')
     transaction_type = models.CharField(max_length=2, choices=TRANSACTION_TYPE, blank=False, null=False,
                                         verbose_name='Тип транзакции')
-    code = models.CharField(null=True, max_length=10, verbose_name='Тикер компании')
-    owner = models.CharField(null=True, max_length=20, verbose_name='Название компании')
+    company = models.ForeignKey('Company', null=False, on_delete=models.PROTECT, verbose_name='Компания')
     transaction_date = models.DateField(verbose_name='Дата транзакции')
     name = models.CharField(null=True, max_length=20, verbose_name='Название')
     amount = models.IntegerField(null=True, verbose_name='Количество')
@@ -33,9 +31,23 @@ class Insider(models.Model):
 
 
 class Company(models.Model):
-    code = models.CharField(null=False,unique=True, max_length=10, verbose_name='Тикер компании')
+    code = models.CharField(null=False, unique=True, max_length=10, verbose_name='Тикер компании')
     name = models.CharField(null=False, max_length=20, verbose_name='Название компании')
-    image = models.ImageField()
+    image = models.ImageField(null=True, verbose_name='Изображение')
+    exchange = models.ForeignKey('Exchange', verbose_name='Биржа', null=False, on_delete=models.PROTECT)
+
+    class Meta:
+        verbose_name_plural = 'Компании'
+        verbose_name = 'Компания'
+
+
+class TestImage(models.Model):
+    image = models.ImageField(null=True, verbose_name='Изображение')
+
+
+class Exchange(models.Model):
+    name = models.CharField(null=False, max_length=20, verbose_name='Название')
+    full_name = models.CharField(unique=True, max_length=40, verbose_name='Полное название')
 
 
 class NewsItem(models.Model):

@@ -4,7 +4,7 @@ import time
 import requests
 from django.core.management.base import BaseCommand
 from datetime import datetime
-from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage
+from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage, Exchange, Company
 from django.db.models import Q
 
 from abc import abstractmethod
@@ -16,6 +16,8 @@ AUTHORIZATION = 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE2MTg5ODk
 INSIDERS_URL = 'https://financemarker.ru/api/insiders?transaction_type=P'
 REFERER_URL = 'https://financemarker.ru/stocks/{}/{}'  # {insider.exchange} {insider.code}
 NEWS_URL = 'https://financemarker.ru/api/news?query={}:{}&type=&page=1'  # {insider.exchange} {insider.code}
+IMAGE_URL_1 = 'https://financemarker.ru/fa/fa_logos/{}.png'
+IMAGE_URL_2 = 'https://financemarker.ru/fa/fa_logos/{}_{}.png'
 
 
 class FinanceMakerRequests:
@@ -38,6 +40,33 @@ class FinanceMakerRequests:
     def get(self, url):
         response = requests.get(url, headers=self.headers)
         return response
+
+
+class FinanceMakerImageParser:
+    def get_image(self, company: Company):
+        response = requests.get(IMAGE_URL_1.format(company.code))
+        if response.status_code == 200:
+            return response.content
+        response = requests.get(IMAGE_URL_2.format(company.exchange.name, company.code))
+        if response.status_code == 200:
+            return response.content
+
+
+class DB:
+    @staticmethod
+    def create_insiders(insiders: list):
+        Insider.objects.bulk_create(insiders)
+
+    @staticmethod
+    def get_or_create_exchange(exchange_name: str, exchange_fullname: str):
+        return Exchange.objects.get_or_create(name=exchange_name, full_name=exchange_fullname)
+
+    def get_or_create_company(self, company_name, company_code, exchange):
+        search_filter = Company.objects.filter(code=company_code)
+        if search_filter:
+            return search_filter[0]
+        company = Company(name=company_name, code=company_code, exchange=exchange)
+        # company.image = FinanceMakerImageParser().get_image(company)
 
 
 class JSONParser:
@@ -66,17 +95,23 @@ class JSONParserInsiders(JSONParser):
                                     transaction_date=transaction_date,
                                     transaction_type=insider['transaction_type'],
                                     trades_curr=insider['trades_curr'],
-                                    code=insider['code'],
+                                    # code=insider['code'],
                                     name=insider['name'],
-                                    owner=insider['owner'],
+                                    # owner=insider['owner'],
                                     amount=int(insider['amount']),
                                     price=float(insider['price']),
-                                    exchange=insider['exchange'],
-                                    full_exchange=insider['exchange'],
+                                    # exchange=insider['exchange'],
+                                    # full_exchange=insider['exchange'],
                                     value=float(insider['value'])
                                     )
+            exchnage_name = insider['exchange']
+            exchnage_fullname = exchnage_name
             if insider['spb']:
-                insider_model.full_exchange += ' SPB'
+                exchnage_fullname += ' SPB'
+            exchange = DB().get_or_create_exchange(exchnage_name, exchnage_fullname)
+            insider_model.exchange = exchange
+            company = DB().get_or_create_company(insider['owner'], insider['code'], exchange)
+            insider_model.company = company
             insiders.append(insider_model)
         return insiders
 
@@ -126,7 +161,7 @@ class UpdaterInsiders(Updater):
             sys.exit()
         insiders = JSONParserInsiders(response.text).get()
         insiders = InsidersFilter(insiders).filter()
-        Insider.objects.bulk_create(insiders)
+        DB().create_insiders(insiders)
 
 
 class UpdaterLastNewsItems(Updater):
@@ -188,15 +223,15 @@ class InsidersMessager:
 
 def parser():
     print('[INFO] Update insiders...')
-    # UpdaterInsiders().update()
+    UpdaterInsiders().update()
     q_filter = Q(tg_messaged=False) & Q(transaction_date__month=datetime.now().month) & Q(
         transaction_date__year=datetime.now().year)
-    filtered_insiders = Insider.objects.filter(q_filter)
+    filtered_insiders = Insider.objects.filter(q_filter).order_by('transaction_date')
     print('[INFO] Update last news...')
     # UpdaterLastNewsItems().update(filtered_insiders)
     print('[INFO] Update telegraph...')
     # UpdaterTelegraphPages().update(filtered_insiders)
-    InsidersMessager().send_messages(filtered_insiders)
+    # InsidersMessager().send_messages(filtered_insiders)
     # message = render_to_string('telegram_message/message.html')
     # telegram_bot.send_message(message)
 
@@ -205,6 +240,9 @@ class Command(BaseCommand):
     help = 'Parser'
 
     def handle(self, *args, **kwargs):
+        bot_thread = telegram_bot.BotThread()
+        bot_thread.daemon = True
+        bot_thread.start()
         while True:
             parser()
             time.sleep(180)

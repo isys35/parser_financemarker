@@ -2,6 +2,8 @@ from django.conf import settings
 import telebot
 from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage
 from django.template.loader import render_to_string
+from threading import Thread
+import traceback
 
 bot = telebot.TeleBot(settings.TELEGRAM_BOT_TOKEN)
 
@@ -40,3 +42,9 @@ class Formater:
                    'value': '{0:,}'.format(insider.value).replace(',', ' '), 'telegraph_page': telegraph_page,
                    'amount': abs(insider.amount)}
         return render_to_string('telegram_message/message.html', context=context)
+
+
+class BotThread(Thread):
+
+    def run(self) -> None:
+        bot.polling(interval=1)
