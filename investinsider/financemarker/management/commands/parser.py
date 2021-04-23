@@ -65,7 +65,10 @@ class FinanceMakerImageParser:
             f = BytesIO(response.content)
             out = BytesIO()
             image = Image.open(f)
-            image.save(out, extension)
+            try:
+                image.save(out, extension)
+            except OSError:
+                return
             content = ContentFile(out.getvalue())
             return content, image_name
 
@@ -93,6 +96,26 @@ class DB:
         company.image.save(image_name, image_content, save=False)
         company.save()
         return company
+
+    @staticmethod
+    def get_or_create_last_news_item(last_news_item: NewsItem):
+        search_filter = NewsItem.objects.filter(fm_id=last_news_item.fm_id)
+        if not search_filter:
+            last_news_item.save()
+            return last_news_item
+        else:
+            return search_filter[0]
+
+    @staticmethod
+    def insiders_filter_to_create(insiders: list):
+        return InsidersFilter(insiders).filter()
+
+    @staticmethod
+    def insiders_filter_to_update_news():
+        q_filter = Q(tg_messaged=False) & Q(transaction_date__month=datetime.now().month) & Q(
+            transaction_date__year=datetime.now().year)
+        filtered_insiders = Insider.objects.filter(q_filter).order_by('transaction_date')
+        return filtered_insiders
 
 
 class JSONParser:
@@ -182,7 +205,7 @@ class UpdaterInsiders(Updater):
             print('[ERROR] Истёк токен пользователя')
             sys.exit()
         insiders = JSONParserInsiders(response.text).get()
-        insiders = InsidersFilter(insiders).filter()
+        insiders = DB().insiders_filter_to_create(insiders)
         DB().create_insiders(insiders)
 
 
@@ -199,9 +222,8 @@ class UpdaterLastNewsItems(Updater):
         last_news_item = JSONParserLastNewsItem(response.text).get()
         if not last_news_item:
             return
-        if not NewsItem.objects.filter(fm_id=last_news_item.fm_id):
-            last_news_item.insider = insider
-            last_news_item.save()
+        last_news_item.insider = insider
+        DB().get_or_create_last_news_item(last_news_item)
 
 
 class UpdaterTelegraphPages(Updater):
@@ -246,13 +268,11 @@ class InsidersMessager:
 def parser():
     print('[INFO] Update insiders...')
     UpdaterInsiders().update()
-    q_filter = Q(tg_messaged=False) & Q(transaction_date__month=datetime.now().month) & Q(
-        transaction_date__year=datetime.now().year)
-    filtered_insiders = Insider.objects.filter(q_filter).order_by('transaction_date')
+    filtered_insiders = DB().insiders_filter_to_update_news()
     print('[INFO] Update last news...')
-    # UpdaterLastNewsItems().update(filtered_insiders)
+    UpdaterLastNewsItems().update(filtered_insiders)
     print('[INFO] Update telegraph...')
-    # UpdaterTelegraphPages().update(filtered_insiders)
+    UpdaterTelegraphPages().update(filtered_insiders)
     # InsidersMessager().send_messages(filtered_insiders)
     # message = render_to_string('telegram_message/message.html')
     # telegram_bot.send_message(message)
