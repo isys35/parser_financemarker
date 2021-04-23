@@ -9,7 +9,7 @@ from django.db.models import Q
 from io import BytesIO
 from django.core.files.base import ContentFile
 from PIL import Image
-from abc import abstractmethod
+from abc import abstractmethod, abstractproperty, ABCMeta
 
 from . import telegraph, telegram_bot
 
@@ -73,6 +73,79 @@ class FinanceMakerImageParser:
             return content, image_name
 
 
+class DBManager:
+    def __init__(self):
+        self.insider = DBInsider()
+        self.exchange = DBExchange()
+        self.company = DBCompany()
+        self.news_item = DBNewsItem()
+
+
+class DBInsider:
+    def __init__(self):
+        self.model = Insider
+
+    def bulk_create(self, instances: list):
+        self.model.objects.bulk_create(instances, ignore_conflicts=True)
+
+    def create(self, instance, unique_field):
+        filter_kwargs = {unique_field: instance.__dict__[unique_field]}
+        if not self.model.objects.filter(**filter_kwargs).exists():
+            instance.save()
+            return instance
+        else:
+            return self.model.objects.get(**filter_kwargs)
+
+    def filter(self, filter_q: Q):
+        return self.model.objects.filter(filter_q).order_by('transaction_date')
+
+    # def get_last_news_item(self, insider: Insider):
+    #     filter_q = Q(insider=insider)
+    #     news_item = self.news_item.filter(filter_q)
+    #     return news_item
+
+
+class DBExchange(DBInsider):
+    def __init__(self):
+        super().__init__()
+        self.model = Exchange
+
+
+class DBCompany(DBInsider):
+    def __init__(self):
+        super().__init__()
+        self.model = Company
+
+    def create(self, instance, unique_field):
+        filter_kwargs = {unique_field: instance.__dict__[unique_field]}
+        if not self.model.objects.filter(**filter_kwargs).exists():
+            try:
+                image_content, image_name = FinanceMakerImageParser().get_image(instance)
+            except TypeError:
+                instance.save()
+                return instance
+            instance.image.save(image_name, image_content, save=False)
+            instance.save()
+            return instance
+        else:
+            return self.model.objects.get(**filter_kwargs)
+
+
+class DBNewsItem(DBInsider):
+    def __init__(self):
+        super().__init__()
+        self.model = NewsItem
+
+    def filter(self, filter_q: Q):
+        return self.model.objects.filter(filter_q).earliest('-publicated')
+
+
+class DBTelegraphPage(DBInsider):
+    def __init__(self):
+        super().__init__()
+        self.model = TelegraphPage
+
+
 class DB:
     @staticmethod
     def create_insiders(insiders: list):
@@ -117,6 +190,22 @@ class DB:
         filtered_insiders = Insider.objects.filter(q_filter).order_by('transaction_date')
         return filtered_insiders
 
+    @staticmethod
+    def get_news_item(insider: Insider):
+        news_items = NewsItem.objects.filter(insider=insider)
+        if news_items:
+            news_item = news_items.earliest('-publicated')
+            return news_item
+
+    @staticmethod
+    def get_telegraph_page(news_item: NewsItem):
+        telegraph_pages_with_insider = TelegraphPage.objects.filter(insider=news_item.insider)
+        if telegraph_pages_with_insider:
+            telegraph_page = telegraph_pages_with_insider[0]
+        else:
+            telegraph_page = telegraph.TelegraphManager().create_page(news_item.insider)
+        return telegraph_page
+
 
 class JSONParser:
     def __init__(self, response: str):
@@ -153,9 +242,11 @@ class JSONParserInsiders(JSONParser):
             exchnage_fullname = exchnage_name
             if insider['spb']:
                 exchnage_fullname += ' SPB'
-            exchange = DB().get_or_create_exchange(exchnage_name, exchnage_fullname)
+            exchange = Exchange(name=exchnage_name, full_name=exchnage_fullname)
+            exchange = DBManager().exchange.create(exchange, 'full_name')
             insider_model.exchange = exchange
-            company = DB().get_or_create_company(insider['owner'], insider['code'], exchange)
+            company = Company(name=insider['owner'], code=insider['code'], exchange=exchange)
+            company = DBManager().company.create(company, 'code')
             insider_model.company = company
             insiders.append(insider_model)
         return insiders
@@ -176,22 +267,6 @@ class JSONParserLastNewsItem(JSONParser):
         return news_item
 
 
-class InsidersFilter:
-    def __init__(self, insiders):
-        self.insiders = insiders
-
-    def filter(self):
-        filtered_list = []
-        for insider in self.insiders:
-            insider_in_db = Insider.objects.filter(fm_id=insider.fm_id)
-            if insider_in_db:
-                continue
-            if insider.transaction_date.month != datetime.now().month or insider.transaction_date.year != datetime.now().year:
-                continue
-            filtered_list.append(insider)
-        return filtered_list
-
-
 class Updater:
     @abstractmethod
     def update(self, **kwargs):
@@ -205,8 +280,7 @@ class UpdaterInsiders(Updater):
             print('[ERROR] Истёк токен пользователя')
             sys.exit()
         insiders = JSONParserInsiders(response.text).get()
-        insiders = DB().insiders_filter_to_create(insiders)
-        DB().create_insiders(insiders)
+        DBManager().insider.bulk_create(insiders)
 
 
 class UpdaterLastNewsItems(Updater):
@@ -223,7 +297,7 @@ class UpdaterLastNewsItems(Updater):
         if not last_news_item:
             return
         last_news_item.insider = insider
-        DB().get_or_create_last_news_item(last_news_item)
+        DBManager().news_item.create(last_news_item, 'fm_id')
 
 
 class UpdaterTelegraphPages(Updater):
@@ -240,14 +314,12 @@ class UpdaterTelegraphPages(Updater):
                 return True
 
     def update_telegraph_page(self, insider: Insider):
-        if self.check_last_news_item(insider):
-            telegraph_pages_with_insider = TelegraphPage.objects.filter(insider=insider)
-            if telegraph_pages_with_insider:
-                telegraph_page = telegraph_pages_with_insider[0]
-            else:
-                telegraph_page = telegraph.TelegraphManager().create_page(insider)
-            news_item = NewsItem.objects.filter(insider=insider).earliest('-publicated')
-            telegraph.TelegraphManager().edit_page(telegraph_page, news_item)
+        last_news_item = DBManager.get_last_news_item(insider)
+        if last_news_item:
+            telegraph_page = DB().get_telegraph_page(last_news_item)
+            telegraph_page = telegraph.TelegraphManager().edit_page(telegraph_page, last_news_item)
+            if telegraph_page:
+                telegraph_page.save()
 
 
 class InsidersMessager:
@@ -268,7 +340,9 @@ class InsidersMessager:
 def parser():
     print('[INFO] Update insiders...')
     UpdaterInsiders().update()
-    filtered_insiders = DB().insiders_filter_to_update_news()
+    q_filter = Q(tg_messaged=False) & Q(transaction_date__month=datetime.now().month) & Q(
+        transaction_date__year=datetime.now().year)
+    filtered_insiders = DBManager().insider.filter(q_filter)
     print('[INFO] Update last news...')
     UpdaterLastNewsItems().update(filtered_insiders)
     print('[INFO] Update telegraph...')

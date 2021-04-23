@@ -67,7 +67,7 @@ class TelegraphManager:
             if response.json()['ok']:
                 telegraph_page.content = str(content)
                 telegraph_page.news_item = news_item
-                telegraph_page.save()
+                return telegraph_page
             else:
                 print('[ERROR] {}'.format(response.json()['error']))
 
