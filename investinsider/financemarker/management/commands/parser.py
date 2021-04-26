@@ -188,7 +188,7 @@ class JSONParserInsiders(JSONParser):
                                     transaction_date=transaction_date,
                                     transaction_type=insider['transaction_type'],
                                     trades_curr=insider['trades_curr'],
-                                    name=insider['name'],
+                                    name=insider['owner'],
                                     amount=int(insider['amount']),
                                     price=float(insider['price']),
                                     value=float(insider['value'])
@@ -200,7 +200,7 @@ class JSONParserInsiders(JSONParser):
             exchange = Exchange(name=exchnage_name, full_name=exchnage_fullname)
             exchange = DBManager().exchange.create(exchange, 'full_name')
             insider_model.exchange = exchange
-            company = Company(name=insider['owner'], code=insider['code'], exchange=exchange)
+            company = Company(name=insider['name'], code=insider['code'], exchange=exchange)
             company = DBManager().company.create(company, 'code')
             insider_model.company = company
             insiders.append(insider_model)
