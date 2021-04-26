@@ -3,7 +3,6 @@ import telebot
 from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage
 from django.template.loader import render_to_string
 from threading import Thread
-import traceback
 
 bot = telebot.TeleBot(settings.TELEGRAM_BOT_TOKEN)
 
@@ -27,13 +26,25 @@ def process_callback_select_example(callback_query: telebot.types.CallbackQuery)
 
 
 class BotManager:
-    def send_text_message(self, text):
+
+    @staticmethod
+    def keyboard():
         keyboard = telebot.types.InlineKeyboardMarkup()
         like_btn = telebot.types.InlineKeyboardButton('👍', callback_data='like_0_0')
         dislike_btn = telebot.types.InlineKeyboardButton('👎', callback_data='dislike_0_0')
         keyboard.add(like_btn, dislike_btn)
+        return keyboard
+
+    def send_text_message(self, text):
+        keyboard = self.keyboard()
         bot.send_message(settings.TELEGRAM_GROUP_ID, text=text, parse_mode='html',
                          disable_web_page_preview=True, reply_markup=keyboard)
+
+    def send_image_message(self, image_path, text):
+        keyboard = self.keyboard()
+        with open(image_path, 'rb') as img:
+            bot.send_photo(chat_id=settings.TELEGRAM_GROUP_ID, photo=img, caption=text, parse_mode='HTML',
+                           reply_markup=keyboard)
 
 
 class Formater:

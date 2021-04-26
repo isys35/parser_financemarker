@@ -1,5 +1,4 @@
 from django.db import models
-from django.conf import settings
 
 
 class Insider(models.Model):
@@ -28,6 +27,7 @@ class Insider(models.Model):
     class Meta:
         verbose_name_plural = 'Инсайдеры'
         verbose_name = 'Инсайдер'
+        ordering = ['transaction_date']
 
 
 class Company(models.Model):
@@ -60,6 +60,7 @@ class NewsItem(models.Model):
     class Meta:
         verbose_name_plural = 'Новости'
         verbose_name = 'Новость'
+        ordering = ['-publicated']
 
 
 class TelegraphAccount(models.Model):
