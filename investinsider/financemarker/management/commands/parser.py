@@ -120,12 +120,6 @@ class DBCompany(DBInsider):
     def create(self, instance, unique_field):
         filter_kwargs = {unique_field: instance.__dict__[unique_field]}
         if not self.model.objects.filter(**filter_kwargs).exists():
-            # try:
-            #     image_content, image_name = FinanceMakerImageParser().get_image(instance)
-            # except TypeError:
-            #     instance.save()
-            #     return instance
-            # instance.image.save(image_name, image_content, save=False)
             instance.save()
             return instance
         else:
