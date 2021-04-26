@@ -294,6 +294,7 @@ class InsidersMessager:
             try:
                 image_name, image_content = FinanceMakerImageParser().get_image(insider.company)
                 DBManager().company.save_image(insider.company, image_name, image_content)
+                DBManager().company.save(insider.company)
             except TypeError:
                 telegram_bot.BotManager().send_text_message(message)
         if insider.company.image:
