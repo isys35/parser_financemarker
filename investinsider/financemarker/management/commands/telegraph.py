@@ -39,7 +39,7 @@ class TelegraphManager:
         account = self.get_account()
         access_token = account.access_token
         content = '[{"tag": "p", "children": ["Новая страница"]}]'
-        response = requests.get(self.CREATE_PAGE_URL.format(access_token, str(insider.owner), content))
+        response = requests.get(self.CREATE_PAGE_URL.format(access_token, str(insider.company.name), content))
         if response.status_code == 200:
             if response.json()['ok']:
                 path = response.json()['result']['path']
@@ -74,7 +74,7 @@ class TelegraphManager:
 
 class Formater:
     def telegraph_format(self, news_item: NewsItem):
-        return [{'tag': 'p', 'children': [news_item.insider.owner]},
+        return [{'tag': 'p', 'children': [news_item.insider.company.name]},
                 {'tag': 'p', 'children': [news_item.content]},
                 {'tag': 'a', 'attrs': {'href': settings.TELEGRAM_CHAT}, 'children': ['INVEST INSIDER', '']},
                 {'tag': 'br'},

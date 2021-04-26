@@ -1,5 +1,5 @@
-Биржа: #{{ insider.full_exchange }}
-Тикер: #{{ insider.code }}
+Биржа: #{{ insider.exchange.full_name }}
+Тикер: #{{ insider.company.code }}
 Компания: {% if telegraph_page %}<a href="{{ telegraph_page.url }}">{{ insider.owner }}</a>{% else %}{{ insider.owner }}{% endif %}
 Сделка: {% if insider.transaction_type == 'P' %} ⬆ Покупка {% elif insider.transaction_type == 'S' %} ⬇️Продажа {% elif insider.transaction_type == 'M' %}  ↕️Опцион {% endif %}
 Кол-во: {{ amount }}

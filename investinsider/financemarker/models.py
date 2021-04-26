@@ -90,5 +90,6 @@ class TelegraphPage(models.Model):
         verbose_name = 'Страницa Telegraph'
 
 
-class TelegramUser(models.Model):
-    tg_id = models.CharField(null=False, unique=True, max_length=40, verbose_name='id telegram')
+class Rate(models.Model):
+    user_id = models.CharField(null=False, max_length=40, verbose_name='id telegram пользователя')
+    message_id = models.CharField(null=False, max_length=40, verbose_name='id telegram сообщения')

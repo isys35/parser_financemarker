@@ -4,20 +4,20 @@ import time
 import requests
 from django.core.management.base import BaseCommand
 from datetime import datetime
-from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage, Exchange, Company
+from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage, Exchange, Company, Rate
 from django.db.models import Q
 from io import BytesIO
 from django.core.files.base import ContentFile
 from PIL import Image
-from abc import abstractmethod, abstractproperty, ABCMeta
+from abc import abstractmethod
 
 from . import telegraph, telegram_bot
 
 AUTHORIZATION = 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE2MTg5ODk1MjMsIm5iZiI6MTYxODk4OTUyMywianRpIjoiMWEzY2U4MjEtMTVlNC00MzYwLWE5NTEtYWE1MDg1Nzk5ODIyIiwiZXhwIjoxNjE5NTk0MzIzLCJpZGVudGl0eSI6Mzc1MjgsImZyZXNoIjp0cnVlLCJ0eXBlIjoiYWNjZXNzIiwidXNlcl9jbGFpbXMiOnsiYWNjZXNzX2xldmVsIjo2LCJkYXRhX2xldmVsIjo2fSwiY3NyZiI6IjM3NWM1MGEwLTg2NzctNGJiNC1hYTUxLTBlM2I3NzNhZDE5NSJ9.VyuxlqfLsUNfKJb4V9VXfKtL2XnQlgslV49tgUGErus'
 
 INSIDERS_URL = 'https://financemarker.ru/api/insiders?transaction_type=P'
-REFERER_URL = 'https://financemarker.ru/stocks/{}/{}'  # {insider.exchange} {insider.code}
-NEWS_URL = 'https://financemarker.ru/api/news?query={}:{}&type=&page=1'  # {insider.exchange} {insider.code}
+REFERER_URL = 'https://financemarker.ru/stocks/{}/{}'  # {insider.exchange.name} {insider.company.code}
+NEWS_URL = 'https://financemarker.ru/api/news?query={}:{}&type=&page=1'  # {insider.exchange.name} {insider.company.code}
 IMAGE_URL_1 = 'https://financemarker.ru/fa/fa_logos/{}.png'
 IMAGE_URL_2 = 'https://financemarker.ru/fa/fa_logos/{}_{}.png'
 IMAGE_URL_3 = 'https://financemarker.ru/fa/fa_logos/{}.jpg'
@@ -80,6 +80,7 @@ class DBManager:
         self.company = DBCompany()
         self.news_item = DBNewsItem()
         self.telegraph_page = DBTelegraphPage()
+        self.rate = DBTelegramRate()
 
 
 class DBInsider:
@@ -141,7 +142,8 @@ class DBNewsItem(DBInsider):
         self.model = NewsItem
 
     def get_last_by_insider(self, insider: Insider):
-        return self.model.objects.filter(insider=insider).earliest('-publicated')
+        if self.model.objects.filter(insider=insider).exists():
+            return self.model.objects.filter(insider=insider).earliest('-publicated')
 
 
 class DBTelegraphPage(DBInsider):
@@ -151,6 +153,19 @@ class DBTelegraphPage(DBInsider):
 
     def get_by_insider(self, insider: Insider):
         return self.model.objects.filter(insider=insider).first()
+
+
+class DBTelegramRate(DBInsider):
+    def __init__(self):
+        super().__init__()
+        self.model = Rate
+
+    def is_liked(self, user_id: str, message_id: str):
+        if self.model.objects.filter(user_id=user_id, message_id=message_id).exists():
+            return True
+
+    def create(self, user_id: str, message_id: str):
+        self.model.objects.create(user_id=user_id, message_id=message_id)
 
 
 class JSONParser:
@@ -233,11 +248,13 @@ class UpdaterLastNewsItems(Updater):
     def update(self, insiders: list):
         for insider in insiders:
             self.update_last_news_item(insider)
+            yield insider
 
-    def update_last_news_item(self, insider: Insider):
+    @staticmethod
+    def update_last_news_item(insider: Insider):
         financemaker_requests = FinanceMakerRequests()
-        financemaker_requests.headers['Referer'] = REFERER_URL.format(insider.exchange, insider.code)
-        url = NEWS_URL.format(insider.exchange, insider.code)
+        financemaker_requests.headers['Referer'] = REFERER_URL.format(insider.exchange.name, insider.company.code)
+        url = NEWS_URL.format(insider.exchange.name, insider.company.code)
         response = financemaker_requests.get(url)
         last_news_item = JSONParserLastNewsItem(response.text).get()
         if not last_news_item:
@@ -246,10 +263,9 @@ class UpdaterLastNewsItems(Updater):
         DBManager().news_item.create(last_news_item, 'fm_id')
 
 
-class UpdaterTelegraphPages(Updater):
-    def update(self, insiders: list):
-        for insider in insiders:
-            self.update_telegraph_page(insider)
+class UpdaterTelegraphPage(Updater):
+    def update(self, insider: Insider):
+        self.update_telegraph_page(insider)
 
     @staticmethod
     def update_telegraph_page(insider: Insider):
@@ -262,24 +278,33 @@ class UpdaterTelegraphPages(Updater):
             DBManager().telegraph_page.save(telegraph_page)
 
 
+class UpdaterTelegraphPages(UpdaterTelegraphPage):
+    def update(self, insiders: list):
+        for insider in insiders:
+            self.update_telegraph_page(insider)
+
+
 class InsidersMessager:
     DELAY = 3
 
+    def send_message(self, insider: Insider):
+        telegraph_page = DBManager().telegraph_page.get_by_insider(insider)
+        message = telegram_bot.Formater().telegram_format(insider, telegraph_page)
+        if not insider.company.image:
+            try:
+                image_name, image_content = FinanceMakerImageParser().get_image(insider.company)
+                DBManager().company.save_image(insider.company, image_name, image_content)
+            except TypeError:
+                telegram_bot.BotManager().send_text_message(message)
+        if insider.company.image:
+            telegram_bot.BotManager().send_image_message(insider.company.image.path, message)
+        insider.tg_messaged = True
+        DBManager().insider.save(insider)
+        time.sleep(self.DELAY)
+
     def send_messages(self, insiders: list):
         for insider in insiders:
-            telegraph_page = DBManager().telegraph_page.get_by_insider(insider)
-            message = telegram_bot.Formater().telegram_format(insider, telegraph_page)
-            if not insider.company.image:
-                try:
-                    image_name, image_content = FinanceMakerImageParser().get_image(insider.company)
-                    DBManager().company.save_image(insider.company, image_name, image_content)
-                except TypeError:
-                    telegram_bot.BotManager().send_text_message(message)
-            if insider.company.image:
-                telegram_bot.BotManager().send_image_message(insider.company.image.path, message)
-            insider.tg_messaged = True
-            DBManager().insider.save(insider)
-            time.sleep(self.DELAY)
+            self.send_message(insider)
 
 
 def parser():
@@ -289,10 +314,12 @@ def parser():
         transaction_date__year=datetime.now().year)
     filtered_insiders = DBManager().insider.filter(q_filter)
     print('[INFO] Update last news...')
-    UpdaterLastNewsItems().update(filtered_insiders)
-    print('[INFO] Update telegraph...')
-    UpdaterTelegraphPages().update(filtered_insiders)
-    InsidersMessager().send_messages(filtered_insiders)
+    news_items_generator = UpdaterLastNewsItems().update(filtered_insiders)
+    for insider in news_items_generator:
+        print('[INFO] Update telegraph...')
+        UpdaterTelegraphPage().update(insider)
+        print('[INFO] Send message...')
+        InsidersMessager().send_message(insider)
 
 
 class Command(BaseCommand):

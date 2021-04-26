@@ -3,12 +3,16 @@ import telebot
 from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage
 from django.template.loader import render_to_string
 from threading import Thread
+from . import parser
 
 bot = telebot.TeleBot(settings.TELEGRAM_BOT_TOKEN)
 
 
 @bot.callback_query_handler(func=lambda c: c.data)
 def process_callback_select_example(callback_query: telebot.types.CallbackQuery):
+    if parser.DBManager().rate.is_liked(str(callback_query.from_user.id), str(callback_query.message.message_id)):
+        bot.answer_callback_query(callback_query_id=callback_query.id, text='Вы уже оценили сообщение')
+        return
     count_like = int(callback_query.data.split('_')[1])
     count_dislike = int(callback_query.data.split('_')[2])
     if callback_query.data.startswith('like'):
@@ -23,6 +27,7 @@ def process_callback_select_example(callback_query: telebot.types.CallbackQuery)
     keyboard.add(btn_1, btn_2)
     bot.edit_message_reply_markup(callback_query.message.chat.id, callback_query.message.message_id,
                                   reply_markup=keyboard)
+    parser.DBManager().rate.create(str(callback_query.from_user.id), str(callback_query.message.message_id))
 
 
 class BotManager:
