@@ -1,6 +1,7 @@
 Биржа: #{{ insider.exchange.full_name }}
 Тикер: #{{ insider.company.code }}
 Компания: {% if telegraph_page %}<a href="{{ telegraph_page.url }}">{{ insider.company.name }}</a>{% else %}{{ insider.company.name }}{% endif %}
+Инсайдер: {{ insider.name }}
 Сделка: {% if insider.transaction_type == 'P' %} ⬆ Покупка {% elif insider.transaction_type == 'S' %} ⬇️Продажа {% elif insider.transaction_type == 'M' %}  ↕️Опцион {% endif %}
 Кол-во: {{ amount }}
 Цена: {{ price }} {% if insider.trades_curr == 'RUB'%}₽{% elif insider.trades_curr == 'USD' %}${% endif %}

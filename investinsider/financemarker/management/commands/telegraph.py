@@ -1,4 +1,4 @@
-from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage
+from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage, Company
 import requests
 from django.conf import settings
 import sys
@@ -35,11 +35,11 @@ class TelegraphManager:
         else:
             return self.create_account()
 
-    def create_page(self, insider: Insider) -> TelegraphPage:
+    def create_page(self, company: Company) -> TelegraphPage:
         account = self.get_account()
         access_token = account.access_token
         content = '[{"tag": "p", "children": ["Новая страница"]}]'
-        response = requests.get(self.CREATE_PAGE_URL.format(access_token, str(insider.company.name), content))
+        response = requests.get(self.CREATE_PAGE_URL.format(access_token, str(company.name), content))
         if response.status_code == 200:
             if response.json()['ok']:
                 path = response.json()['result']['path']
@@ -48,14 +48,13 @@ class TelegraphManager:
                 description = response.json()['result']['description']
                 content = str(response.json()['result']['content'])
                 return TelegraphPage(path=path, url=url, title=title, description=description, content=content,
-                                     account=account, insider=insider)
+                                     account=account, company=company)
             else:
                 print('[ERROR] {}'.format(response.json()['error']))
                 sys.exit()
 
-    def edit_page(self, telegraph_page: TelegraphPage, news_item: NewsItem):
+    def edit_page(self, telegraph_page: TelegraphPage, content):
         url = self.EDIT_PAGE_URL.format(telegraph_page.path)
-        content = Formater().telegraph_format(news_item)
         json_data = {
             'access_token': telegraph_page.account.access_token,
             'title': telegraph_page.title,
@@ -66,15 +65,14 @@ class TelegraphManager:
         if response.status_code == 200:
             if response.json()['ok']:
                 telegraph_page.content = str(content)
-                telegraph_page.news_item = news_item
                 return telegraph_page
             else:
                 print('[ERROR] {}'.format(response.json()['error']))
-
+                sys.exit()
 
 class Formater:
     def telegraph_format(self, news_item: NewsItem):
-        return [{'tag': 'p', 'children': [news_item.insider.company.name]},
+        return [{'tag': 'p', 'children': [news_item.company.name]},
                 {'tag': 'p', 'children': [news_item.content]},
                 {'tag': 'a', 'attrs': {'href': settings.TELEGRAM_CHAT}, 'children': ['INVEST INSIDER', '']},
                 {'tag': 'br'},
@@ -82,3 +80,9 @@ class Formater:
                 {'tag': 'br'},
                 {'tag': 'p', 'children': [news_item.publicated.strftime("%d.%m.%Y")]},
                 {'tag': 'hr'}]
+
+    def telegraph_format_many_items(self, news_items: list):
+        content = []
+        for news_item in news_items:
+            content.extend(self.telegraph_format(news_item))
+        return content

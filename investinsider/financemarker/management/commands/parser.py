@@ -10,6 +10,7 @@ from io import BytesIO
 from django.core.files.base import ContentFile
 from PIL import Image
 from abc import abstractmethod
+from requests import Response
 
 from . import telegraph, telegram_bot
 
@@ -139,6 +140,10 @@ class DBNewsItem(DBInsider):
         if self.model.objects.filter(insider=insider).exists():
             return self.model.objects.filter(insider=insider).earliest('-publicated')
 
+    def get_by_company(self, company: Company):
+        if self.model.objects.filter(company=company).exists():
+            return self.model.objects.filter(company=company)
+
 
 class DBTelegraphPage(DBInsider):
     def __init__(self):
@@ -147,6 +152,10 @@ class DBTelegraphPage(DBInsider):
 
     def get_by_insider(self, insider: Insider):
         return self.model.objects.filter(insider=insider).first()
+
+    def get_by_company(self, company: Company):
+        return self.model.objects.filter(company=company).first()
+
 
 
 class DBTelegramRate(DBInsider):
@@ -207,19 +216,32 @@ class JSONParserInsiders(JSONParser):
         return insiders
 
 
-class JSONParserLastNewsItem(JSONParser):
+class JSONParserNewsItems(JSONParser):
     def __init__(self, response: str):
         super().__init__(response)
 
     def get(self) -> NewsItem:
         if not self.json_dict['data']:
             return
-        last_news_json = self.json_dict['data'][0]
-        publicated = datetime.strptime(last_news_json['pub_date'], "%Y-%m-%d %H:%M:%S")
-        news_item = NewsItem(fm_id=last_news_json['id'], title=last_news_json['title'],
-                             content=last_news_json['text'], link=last_news_json['link'],
-                             publicated=publicated)
-        return news_item
+        news_items_json = self.json_dict['data']
+        news_items = []
+        for news_item_json in news_items_json:
+            publicated = datetime.strptime(news_item_json['pub_date'], "%Y-%m-%d %H:%M:%S")
+            news_item = NewsItem(fm_id=news_item_json['id'], title=news_item_json['title'],
+                                 content=news_item_json['text'], link=news_item_json['link'],
+                                 publicated=publicated)
+            news_items.append(news_item)
+        return news_items
+
+
+class JSONParserLastNewsItem(JSONParserNewsItems):
+    def __init__(self, response: str):
+        super().__init__(response)
+
+    def get(self) -> NewsItem:
+        if not self.json_dict['data']:
+            return
+        return super().get()[0]
 
 
 class Updater:
@@ -244,17 +266,35 @@ class UpdaterLastNewsItems(Updater):
             self.update_last_news_item(insider)
             yield insider
 
-    @staticmethod
-    def update_last_news_item(insider: Insider):
+    def get_news_response(self, insider: Insider) -> Response:
         financemaker_requests = FinanceMakerRequests()
         financemaker_requests.headers['Referer'] = REFERER_URL.format(insider.exchange.name, insider.company.code)
         url = NEWS_URL.format(insider.exchange.name, insider.company.code)
         response = financemaker_requests.get(url)
+        return response
+
+    def update_last_news_item(self, insider: Insider):
+        response = self.get_news_response(insider)
         last_news_item = JSONParserLastNewsItem(response.text).get()
         if not last_news_item:
             return
         last_news_item.insider = insider
         DBManager().news_item.create(last_news_item, 'fm_id')
+
+
+class UpdaterNewsItems(UpdaterLastNewsItems):
+    def update(self, insiders: list):
+        for insider in insiders:
+            self.update_news_items(insider)
+            yield insider
+
+    def update_news_items(self, insider: Insider):
+        response = self.get_news_response(insider)
+        news_items = JSONParserNewsItems(response.text).get()
+        if news_items:
+            for news_item in news_items:
+                news_item.company = insider.company
+            DBManager().news_item.bulk_create(news_items)
 
 
 class UpdaterTelegraphPage(Updater):
@@ -268,8 +308,27 @@ class UpdaterTelegraphPage(Updater):
             telegraph_page = DBManager().telegraph_page.get_by_insider(insider)
             if not telegraph_page:
                 telegraph_page = telegraph.TelegraphManager().create_page(insider)
-            telegraph_page = telegraph.TelegraphManager().edit_page(telegraph_page, last_news_item)
+            telegraph_content = telegraph.Formater().telegraph_format(last_news_item)
+            telegraph_page = telegraph.TelegraphManager().edit_page(telegraph_page, telegraph_content)
             DBManager().telegraph_page.save(telegraph_page)
+
+
+class UpdaterTelegraphPageManyNews(UpdaterTelegraphPage):
+
+    @staticmethod
+    def update_telegraph_page(insider: Insider):
+        news_items = DBManager().news_item.get_by_company(insider.company)
+        if news_items:
+            telegraph_page = DBManager().telegraph_page.get_by_company(insider.company)
+            if not telegraph_page:
+                telegraph_page = telegraph.TelegraphManager().create_page(insider.company)
+            telegraph_content = telegraph.Formater().telegraph_format_many_items(news_items)
+            telegraph_page = telegraph.TelegraphManager().edit_page(telegraph_page, telegraph_content)
+            telegraph_page = DBManager().telegraph_page.save(telegraph_page)
+            for news_item in news_items:
+                news_item.telegraph_page = telegraph_page
+                DBManager().news_item.save(news_item)
+
 
 
 class UpdaterTelegraphPages(UpdaterTelegraphPage):
@@ -282,7 +341,7 @@ class InsidersMessager:
     DELAY = 3
 
     def send_message(self, insider: Insider):
-        telegraph_page = DBManager().telegraph_page.get_by_insider(insider)
+        telegraph_page = DBManager().telegraph_page.get_by_company(insider.company)
         message = telegram_bot.Formater().telegram_format(insider, telegraph_page)
         if not insider.company.image:
             try:
@@ -309,10 +368,10 @@ def parser():
         transaction_date__year=datetime.now().year)
     filtered_insiders = DBManager().insider.filter(q_filter)
     print('[INFO] Update last news...')
-    news_items_generator = UpdaterLastNewsItems().update(filtered_insiders)
+    news_items_generator = UpdaterNewsItems().update(filtered_insiders)
     for insider in news_items_generator:
         print('[INFO] Update telegraph...')
-        UpdaterTelegraphPage().update(insider)
+        UpdaterTelegraphPageManyNews().update(insider)
         print('[INFO] Send message...')
         InsidersMessager().send_message(insider)
 

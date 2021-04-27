@@ -52,7 +52,9 @@ class NewsItem(models.Model):
     content = models.TextField(null=True, verbose_name='Текст')
     link = models.CharField(null=True, max_length=50, verbose_name='Ссылка')
     publicated = models.DateTimeField(verbose_name='Время и дата публикации')
-    insider = models.ForeignKey('Insider', null=False, on_delete=models.PROTECT, verbose_name='Инсайдер')
+    company = models.ForeignKey('Company', null=False, on_delete=models.PROTECT, verbose_name='Компания')
+    telegraph_page = models.ForeignKey('TelegraphPage', null=True, on_delete=models.PROTECT,
+                                       verbose_name='Страница Telegraph')
 
     def __str__(self):
         return self.title
@@ -82,8 +84,7 @@ class TelegraphPage(models.Model):
     description = models.TextField(null=True, verbose_name='Описание')
     content = models.TextField(null=False, verbose_name='Контент')
     account = models.ForeignKey('TelegraphAccount', null=False, on_delete=models.PROTECT, verbose_name='Аккаунт')
-    insider = models.ForeignKey('Insider', null=False, on_delete=models.PROTECT, verbose_name='Инсайдер')
-    news_item = models.ForeignKey('NewsItem', null=False, on_delete=models.PROTECT, verbose_name='Новость')
+    company = models.ForeignKey('Company', null=False, on_delete=models.PROTECT, verbose_name='Компания', unique=True)
 
     class Meta:
         verbose_name_plural = 'Страницы Telegraph'
