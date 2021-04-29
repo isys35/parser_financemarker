@@ -8,6 +8,7 @@ class TelegraphManager:
     CREATE_ACCOUNT_URL = 'https://api.telegra.ph/createAccount?short_name={}&author_name={}'
     CREATE_PAGE_URL = 'https://api.telegra.ph/createPage?access_token={}&title={}&content={}&return_content=true'
     EDIT_PAGE_URL = 'https://api.telegra.ph/editPage/{}'
+    TELEGRAPH_INIT_CONTENT = [{"tag": "p", "children": ["Нет новостей..."]}]
 
     def create_account(self):
         response = requests.get(
@@ -38,7 +39,7 @@ class TelegraphManager:
     def create_page(self, company: Company) -> TelegraphPage:
         account = self.get_account()
         access_token = account.access_token
-        content = '[{"tag": "p", "children": ["Новая страница"]}]'
+        content = str(self.TELEGRAPH_INIT_CONTENT)
         response = requests.get(self.CREATE_PAGE_URL.format(access_token, str(company.name), content))
         if response.status_code == 200:
             if response.json()['ok']:
@@ -76,7 +77,7 @@ class Formater:
                 {'tag': 'p', 'children': [news_item.content]},
                 {'tag': 'a', 'attrs': {'href': settings.TELEGRAM_CHAT}, 'children': ['INVEST INSIDER', '']},
                 {'tag': 'br'},
-                {'tag': 'a', 'attrs': {'href': news_item.link}, 'children': ['Источник']},
+                {'tag': 'a', 'attrs': {'href': news_item.source.link}, 'children': ['Источник']},
                 {'tag': 'br'},
                 {'tag': 'p', 'children': [news_item.publicated.strftime("%d.%m.%Y")]},
                 {'tag': 'hr'}]

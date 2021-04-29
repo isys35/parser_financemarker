@@ -4,7 +4,8 @@ import time
 import requests
 from django.core.management.base import BaseCommand
 from datetime import datetime
-from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage, Exchange, Company, Rate
+from financemarker.models import Insider, NewsItem, TelegraphAccount, \
+    TelegraphPage, Exchange, Company, Rate, Source
 from django.db.models import Q
 from io import BytesIO
 from django.core.files.base import ContentFile
@@ -14,7 +15,7 @@ from requests import Response
 
 from . import telegraph, telegram_bot
 
-AUTHORIZATION = 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE2MTg5ODk1MjMsIm5iZiI6MTYxODk4OTUyMywianRpIjoiMWEzY2U4MjEtMTVlNC00MzYwLWE5NTEtYWE1MDg1Nzk5ODIyIiwiZXhwIjoxNjE5NTk0MzIzLCJpZGVudGl0eSI6Mzc1MjgsImZyZXNoIjp0cnVlLCJ0eXBlIjoiYWNjZXNzIiwidXNlcl9jbGFpbXMiOnsiYWNjZXNzX2xldmVsIjo2LCJkYXRhX2xldmVsIjo2fSwiY3NyZiI6IjM3NWM1MGEwLTg2NzctNGJiNC1hYTUxLTBlM2I3NzNhZDE5NSJ9.VyuxlqfLsUNfKJb4V9VXfKtL2XnQlgslV49tgUGErus'
+AUTHORIZATION = 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE2MTk2ODc1MzEsIm5iZiI6MTYxOTY4NzUzMSwianRpIjoiNDQyMGRkMDYtOTdmMy00OTdmLWIxODAtYWIwZWIzMDI5MTkwIiwiZXhwIjoxNjIwMjkyMzMxLCJpZGVudGl0eSI6MzgwNjMsImZyZXNoIjp0cnVlLCJ0eXBlIjoiYWNjZXNzIiwidXNlcl9jbGFpbXMiOnsiYWNjZXNzX2xldmVsIjo2LCJkYXRhX2xldmVsIjo2fSwiY3NyZiI6ImVlYjA1NjVjLTk5ZGQtNDUwNC05OWFiLTE2ZjE1ZGY2MDE5YiJ9.ZeSj1qyE4h5THXZvc4Igh5HdJXTSI-OSs0SyFUutcYY'
 
 INSIDERS_URL = 'https://financemarker.ru/api/insiders?transaction_type=P'
 REFERER_URL = 'https://financemarker.ru/stocks/{}/{}'  # {insider.exchange.name} {insider.company.code}
@@ -23,6 +24,10 @@ IMAGE_URL_1 = 'https://financemarker.ru/fa/fa_logos/{}.png'
 IMAGE_URL_2 = 'https://financemarker.ru/fa/fa_logos/{}_{}.png'
 IMAGE_URL_3 = 'https://financemarker.ru/fa/fa_logos/{}.jpg'
 IMAGE_URL_4 = 'https://financemarker.ru/fa/fa_logos/{}_{}.jpg'
+IMAGE_URL_5 = 'https://financemarker.ru/fa/fa_logos/{}.PNG'
+IMAGE_URL_6 = 'https://financemarker.ru/fa/fa_logos/{}_{}.PNG'
+IMAGE_URL_7 = 'https://financemarker.ru/fa/fa_logos/{}.JPG'
+IMAGE_URL_8 = 'https://financemarker.ru/fa/fa_logos/{}_{}.JPG'
 
 
 class FinanceMakerRequests:
@@ -63,7 +68,9 @@ class FinanceMakerImageParser:
 
     def get_image(self, company: Company):
         urls = [IMAGE_URL_1.format(company.code), IMAGE_URL_2.format(company.exchange.name, company.code),
-                IMAGE_URL_3.format(company.code), IMAGE_URL_4.format(company.exchange.name, company.code)]
+                IMAGE_URL_3.format(company.code), IMAGE_URL_4.format(company.exchange.name, company.code),
+                IMAGE_URL_5.format(company.code), IMAGE_URL_6.format(company.exchange.name, company.code),
+                IMAGE_URL_7.format(company.code), IMAGE_URL_7.format(company.exchange.name, company.code),]
         for url in urls:
             response = requests.get(url)
             if response.status_code == 200:
@@ -82,6 +89,7 @@ class DBManager:
         self.news_item = DBNewsItem()
         self.telegraph_page = DBTelegraphPage()
         self.rate = DBTelegramRate()
+        self.source = DBSource()
 
 
 class DBInsider:
@@ -91,13 +99,10 @@ class DBInsider:
     def bulk_create(self, instances: list):
         self.model.objects.bulk_create(instances, ignore_conflicts=True)
 
-    def create(self, instance, unique_field):
-        filter_kwargs = {unique_field: instance.__dict__[unique_field]}
-        if not self.model.objects.filter(**filter_kwargs).exists():
-            instance.save()
-            return instance
-        else:
-            return self.model.objects.get(**filter_kwargs)
+    def get_or_create(self, instance):
+        params = {k: v for k, v in instance.__dict__.items() if k[0] != '_' if k !='id'}
+        obj, created = self.model.objects.get_or_create(params)
+        return obj
 
     def filter(self, filter_q: Q):
         return self.model.objects.filter(filter_q)
@@ -105,6 +110,12 @@ class DBInsider:
     @staticmethod
     def save(instance):
         instance.save()
+
+
+class DBSource(DBInsider):
+    def __init__(self):
+        super().__init__()
+        self.model = Source
 
 
 class DBExchange(DBInsider):
@@ -118,13 +129,6 @@ class DBCompany(DBInsider):
         super().__init__()
         self.model = Company
 
-    def create(self, instance, unique_field):
-        filter_kwargs = {unique_field: instance.__dict__[unique_field]}
-        if not self.model.objects.filter(**filter_kwargs).exists():
-            instance.save()
-            return instance
-        else:
-            return self.model.objects.get(**filter_kwargs)
 
     @staticmethod
     def save_image(instance, image_name, image_content):
@@ -141,7 +145,7 @@ class DBNewsItem(DBInsider):
             return self.model.objects.filter(insider=insider).earliest('-publicated')
 
     def get_by_company(self, company: Company):
-        if self.model.objects.filter(company=company).exists():
+        if self.model.objects.filter(company=company, source__trusted=True).exists():
             return self.model.objects.filter(company=company)
 
 
@@ -155,7 +159,6 @@ class DBTelegraphPage(DBInsider):
 
     def get_by_company(self, company: Company):
         return self.model.objects.filter(company=company).first()
-
 
 
 class DBTelegramRate(DBInsider):
@@ -207,10 +210,10 @@ class JSONParserInsiders(JSONParser):
             if insider['spb']:
                 exchnage_fullname += ' SPB'
             exchange = Exchange(name=exchnage_name, full_name=exchnage_fullname)
-            exchange = DBManager().exchange.create(exchange, 'full_name')
+            exchange = DBManager().exchange.get_or_create(exchange)
             insider_model.exchange = exchange
             company = Company(name=insider['name'], code=insider['code'], exchange=exchange)
-            company = DBManager().company.create(company, 'code')
+            company = DBManager().company.get_or_create(company)
             insider_model.company = company
             insiders.append(insider_model)
         return insiders
@@ -226,9 +229,10 @@ class JSONParserNewsItems(JSONParser):
         news_items_json = self.json_dict['data']
         news_items = []
         for news_item_json in news_items_json:
+            source = DBManager().source.get_or_create(Source(link=news_item_json['link']))
             publicated = datetime.strptime(news_item_json['pub_date'], "%Y-%m-%d %H:%M:%S")
             news_item = NewsItem(fm_id=news_item_json['id'], title=news_item_json['title'],
-                                 content=news_item_json['text'], link=news_item_json['link'],
+                                 content=news_item_json['text'], source=source,
                                  publicated=publicated)
             news_items.append(news_item)
         return news_items
@@ -279,7 +283,7 @@ class UpdaterLastNewsItems(Updater):
         if not last_news_item:
             return
         last_news_item.insider = insider
-        DBManager().news_item.create(last_news_item, 'fm_id')
+        DBManager().news_item.get_or_create(last_news_item)
 
 
 class UpdaterNewsItems(UpdaterLastNewsItems):
@@ -328,6 +332,12 @@ class UpdaterTelegraphPageManyNews(UpdaterTelegraphPage):
             for news_item in news_items:
                 news_item.telegraph_page = telegraph_page
                 DBManager().news_item.save(news_item)
+        else:
+            telegraph_page = DBManager().telegraph_page.get_by_company(insider.company)
+            if telegraph_page:
+                telegraph_page = telegraph.TelegraphManager().edit_page(telegraph_page,
+                                                                        telegraph.TelegraphManager().TELEGRAPH_INIT_CONTENT)
+                DBManager().telegraph_page.save(telegraph_page)
 
 
 

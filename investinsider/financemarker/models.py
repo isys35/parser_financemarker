@@ -46,11 +46,20 @@ class Exchange(models.Model):
     full_name = models.CharField(unique=True, max_length=40, verbose_name='Полное название')
 
 
+class Source(models.Model):
+    link = models.CharField(null=False, unique=True, max_length=50, verbose_name='Ссылка')
+    trusted = models.BooleanField(default=True, verbose_name='Доверенный')
+
+    class Meta:
+        verbose_name_plural = 'Источники'
+        verbose_name = 'Источник'
+
+
 class NewsItem(models.Model):
     fm_id = models.CharField(max_length=30, verbose_name='financemarker ID', unique=True)
     title = models.CharField(null=True, max_length=20, verbose_name='Заголовок')
     content = models.TextField(null=True, verbose_name='Текст')
-    link = models.CharField(null=True, max_length=50, verbose_name='Ссылка')
+    source = models.ForeignKey('Source', on_delete=models.PROTECT, verbose_name='Источник')
     publicated = models.DateTimeField(verbose_name='Время и дата публикации')
     company = models.ForeignKey('Company', null=False, on_delete=models.PROTECT, verbose_name='Компания')
     telegraph_page = models.ForeignKey('TelegraphPage', null=True, on_delete=models.PROTECT,
@@ -84,7 +93,7 @@ class TelegraphPage(models.Model):
     description = models.TextField(null=True, verbose_name='Описание')
     content = models.TextField(null=False, verbose_name='Контент')
     account = models.ForeignKey('TelegraphAccount', null=False, on_delete=models.PROTECT, verbose_name='Аккаунт')
-    company = models.ForeignKey('Company', null=False, on_delete=models.PROTECT, verbose_name='Компания', unique=True)
+    company = models.OneToOneField('Company', on_delete=models.PROTECT, verbose_name='Компания')
 
     class Meta:
         verbose_name_plural = 'Страницы Telegraph'
