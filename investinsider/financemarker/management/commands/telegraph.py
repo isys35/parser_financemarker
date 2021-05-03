@@ -74,6 +74,7 @@ class TelegraphManager:
                 print('[ERROR] {}'.format(error_message))
                 if re.search('FLOOD_WAIT', error_message):
                     time.sleep(int(error_message.split('_')[-1]))
+                    self.edit_page(telegraph_page, content)
                 sys.exit()
 
 
