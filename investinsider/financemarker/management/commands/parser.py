@@ -14,8 +14,7 @@ from abc import abstractmethod
 from requests import Response
 
 from . import telegraph, telegram_bot
-
-AUTHORIZATION = 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE2MTk2ODc1MzEsIm5iZiI6MTYxOTY4NzUzMSwianRpIjoiNDQyMGRkMDYtOTdmMy00OTdmLWIxODAtYWIwZWIzMDI5MTkwIiwiZXhwIjoxNjIwMjkyMzMxLCJpZGVudGl0eSI6MzgwNjMsImZyZXNoIjp0cnVlLCJ0eXBlIjoiYWNjZXNzIiwidXNlcl9jbGFpbXMiOnsiYWNjZXNzX2xldmVsIjo2LCJkYXRhX2xldmVsIjo2fSwiY3NyZiI6ImVlYjA1NjVjLTk5ZGQtNDUwNC05OWFiLTE2ZjE1ZGY2MDE5YiJ9.ZeSj1qyE4h5THXZvc4Igh5HdJXTSI-OSs0SyFUutcYY'
+from django.conf import settings
 
 INSIDERS_URL = 'https://financemarker.ru/api/insiders?transaction_type=P'
 REFERER_URL = 'https://financemarker.ru/stocks/{}/{}'  # {insider.exchange.name} {insider.company.code}
@@ -33,7 +32,7 @@ IMAGE_URL_8 = 'https://financemarker.ru/fa/fa_logos/{}_{}.JPG'
 class FinanceMakerRequests:
 
     def __init__(self):
-        self.authorization = AUTHORIZATION
+        self.authorization = settings.AUTHORIZATION
         self.headers = {
             'Accept': 'application/json, text/plain, */*',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -310,9 +309,12 @@ class UpdaterTelegraphPage(Updater):
         last_news_item = DBManager().news_item.get_last_by_insider(insider)
         if last_news_item:
             telegraph_page = DBManager().telegraph_page.get_by_insider(insider)
-            if not telegraph_page:
-                telegraph_page = telegraph.TelegraphManager().create_page(insider)
             telegraph_content = telegraph.Formater().telegraph_format(last_news_item)
+            if telegraph_page:
+                if str(telegraph_content) == telegraph_page.content:
+                    return
+            else:
+                telegraph_page = telegraph.TelegraphManager().create_page(insider)
             telegraph_page = telegraph.TelegraphManager().edit_page(telegraph_page, telegraph_content)
             DBManager().telegraph_page.save(telegraph_page)
 
@@ -374,7 +376,7 @@ class InsidersMessager:
 def parser():
     print('[INFO] Update insiders...')
     UpdaterInsiders().update()
-    q_filter = Q(tg_messaged=False) & Q(transaction_date__month=datetime.now().month) & Q(
+    q_filter = Q(tg_messaged=False) & Q(transaction_date__month=datetime.now().month-1) & Q(
         transaction_date__year=datetime.now().year)
     filtered_insiders = DBManager().insider.filter(q_filter)
     print('[INFO] Update last news...')

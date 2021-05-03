@@ -1,7 +1,9 @@
 from financemarker.models import Insider, NewsItem, TelegraphAccount, TelegraphPage, Company
 import requests
 from django.conf import settings
+import time
 import sys
+import re
 
 
 class TelegraphManager:
@@ -39,7 +41,7 @@ class TelegraphManager:
     def create_page(self, company: Company) -> TelegraphPage:
         account = self.get_account()
         access_token = account.access_token
-        content = str(self.TELEGRAPH_INIT_CONTENT)
+        content = str(self.TELEGRAPH_INIT_CONTENT).replace("'", '"')
         response = requests.get(self.CREATE_PAGE_URL.format(access_token, str(company.name), content))
         if response.status_code == 200:
             if response.json()['ok']:
@@ -68,8 +70,12 @@ class TelegraphManager:
                 telegraph_page.content = str(content)
                 return telegraph_page
             else:
-                print('[ERROR] {}'.format(response.json()['error']))
+                error_message = response.json()['error']
+                print('[ERROR] {}'.format(error_message))
+                if re.search('FLOOD_WAIT', error_message):
+                    time.sleep(int(error_message.split('_')[-1]))
                 sys.exit()
+
 
 class Formater:
     def telegraph_format(self, news_item: NewsItem):
